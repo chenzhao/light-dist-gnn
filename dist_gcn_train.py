@@ -26,10 +26,10 @@ def train(g, env, total_epoch):
         env.logger.log("Epoch {:05d} | Loss {:.4f} | Time: {}".format(epoch, loss.item(), datetime.datetime.now()-begin), rank=0)
 
         if (epoch+1)%5==0:
-            output_parts = [torch.zeros(g.split_size, g.num_classes) for _ in range(env.world_size)]
+            output_parts = [torch.zeros(g.split_size, g.num_classes, device=env.device) for _ in range(env.world_size)]
             if outputs.size(0) != g.split_size:
                 pad_row = g.split_size - outputs.size(0)
-                outputs = torch.cat((outputs, torch.zeros((pad_row, g.num_classes))), dim=0)
+                outputs = torch.cat((outputs, torch.zeros(pad_row, g.num_classes, device=env.device)), dim=0)
             env.all_gather(output_parts, outputs)  # output_parts[g_env.rank] = outputs
 
             last_part_size = g.num_nodes - g.split_size * (env.world_size - 1)

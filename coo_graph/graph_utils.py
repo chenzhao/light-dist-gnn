@@ -35,6 +35,7 @@ def sym_normalization(edge_index, num_nodes, faster_device='cuda:0'):
     del A  # to save GPU mem
     # print(DA)
     DAD = torch.sparse.mm(DA, D_rsqrt)
+    del DA
     # end = datetime.datetime.now()
     # print('sym norm done',  end - begin)
     return DAD.coalesce().to(original_device)
