@@ -35,8 +35,18 @@ def broadcast(local_adj_parts, local_feature):
             feature_recv = local_feature
         else:
             feature_recv = torch.zeros((local_adj_parts[i].size(1), local_feature.size(1)), device=env.device)
+        env.timer.barrier_all()
+        torch.cuda.synchronize()
+        env.timer.start('broadcast')
         env.broadcast(feature_recv, src=i)
+        env.time.end('broadcast')
+
+        torch.cuda.synchronize()
+        env.timer.start('spmm')
         z_loc = torch.addmm(z_loc, local_adj_parts[i], feature_recv)
+        torch.cuda.synchronize()
+        env.time.end('spmm')
+    env.time.end('broadcast')
     return z_loc
 
 
