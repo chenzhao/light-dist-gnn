@@ -20,7 +20,7 @@ def process_wrapper(rank, nprocs, backend, func):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--nprocs", type=int, default=4)
-    parser.add_argument("--backend", type=str, default='gloo')
+    parser.add_argument("--backend", type=str, default='nccl' if torch.cuda.device_count()>1 else 'gloo')
     args = parser.parse_args()
     process_args = (args.nprocs, args.backend, dist_gcn_train.main)
     torch.multiprocessing.spawn(process_wrapper, process_args, args.nprocs)

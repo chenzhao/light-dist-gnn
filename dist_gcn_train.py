@@ -51,6 +51,7 @@ def copy_data_to_device(g, device):
     for i in range(len(g.local_adj_parts)):
         g.local_adj_parts[i] = g.local_adj_parts[i].to(device)
     g.local_labels = g.local_labels.to(device)
+    g.labels = g.labels.to(device)
 
 
 def main(env):
