@@ -39,14 +39,14 @@ def broadcast(local_adj_parts, local_feature):
         torch.cuda.synchronize()
         env.timer.start('broadcast')
         env.broadcast(feature_recv, src=i)
-        env.time.end('broadcast')
+        env.timer.stop('broadcast')
 
         torch.cuda.synchronize()
         env.timer.start('spmm')
         z_loc = torch.addmm(z_loc, local_adj_parts[i], feature_recv)
         torch.cuda.synchronize()
-        env.time.end('spmm')
-    env.time.end('broadcast')
+        env.timer.stop('spmm')
+    env.timer.stop('broadcast')
     return z_loc
 
 
