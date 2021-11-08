@@ -5,19 +5,8 @@ import torch.sparse
 from . import graph_utils
 from . import datasets
 
-class COO_Graph:
-    num_nodes = 0
-    num_edges = 0
-    num_classes = 0
-    edge_index: torch.Tensor = None
-    features: torch.Tensor = None
-    labels: torch.Tensor = None
-    train_mask: torch.Tensor = None
-    val_mask: torch.Tensor = None
-    test_mask: torch.Tensor = None
 
-
-class Parted_COO_Graph(COO_Graph):
+class Parted_COO_Graph():
     def full_graph_path(self, root=datasets.data_root):
         return os.path.join(root, f'{self.name}_{self.preprocess_for}_full.coo_graph')
 

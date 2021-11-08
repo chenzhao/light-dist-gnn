@@ -13,17 +13,15 @@ def train(g, env, total_epoch):
     env.timer.start('training')
     for epoch in range(total_epoch):
         begin = datetime.datetime.now()
-        outputs = model(g.features)
-        # loss = F.cross_entropy(outputs[g.local_train_mask], g.local_labels[g.local_train_mask])
+        outputs = model()
         optimizer.zero_grad()
         if list(g.local_labels[g.local_train_mask].size())[0] > 0:
             loss = F.nll_loss(outputs[g.local_train_mask], g.local_labels[g.local_train_mask])
             loss.backward()
         else:
             env.logger.log('Warning: no training nodes in this partition!')
-            fake_loss = (outputs * torch.cuda.FloatTensor(outputs.size(), device=env.device).fill_(0)).sum()
+            fake_loss = (outputs * 0).sum()
             fake_loss.backward()
-        # loss.backward()
         optimizer.step()
         env.logger.log("Epoch {:05d} | Loss {:.4f} | Time: {}".format(epoch, loss.item(), datetime.datetime.now()-begin), rank=0)
 
@@ -50,19 +48,17 @@ def train(g, env, total_epoch):
 
 def copy_data_to_device(g, device):
     g.local_features = g.local_features.to(device)
-    g.local_adj = g.local_adj.to(device)
     for i in range(len(g.local_adj_parts)):
         g.local_adj_parts[i] = g.local_adj_parts[i].to(device)
     g.local_labels = g.local_labels.to(device)
 
 
 def main(env):
-    # print('train begin at proc:', env.rank)
     env.logger.log('train begin at proc:', env)
     env.timer.start('total')
-    g = Parted_COO_Graph('reddit', rank=env.rank, num_parts=env.world_size)
+    # g = Parted_COO_Graph('reddit', rank=env.rank, num_parts=env.world_size)
     # g = Parted_COO_Graph('flickr', rank=env.rank, num_parts=env.world_size)
-    # g = Parted_COO_Graph('a_quarter_reddit', rank=env.rank, num_parts=env.world_size)
+    g = Parted_COO_Graph('a_quarter_reddit', rank=env.rank, num_parts=env.world_size)
     env.logger.log('dataset loaded', g)
     copy_data_to_device(g, env.device)
     train(g, env, total_epoch=10)
