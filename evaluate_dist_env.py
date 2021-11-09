@@ -11,10 +11,12 @@ from torch.multiprocessing import Process
 
 
 def batch_bcast(env, sz_tag, size, repeat):
-    data = torch.rand(size, dtype=torch.float32, device=env.device)
-    recv = torch.zeros(size, dtype=torch.float32, device=env.device)
+    dtype = torch.int8
+    data = torch.ones(size, dtype=dtype, device=env.device)
+    recv = torch.zeros(size, dtype=dtype, device=env.device)
     tag = f'{env.backend}_{env.world_size}_broadcast'
     for i in range(repeat):
+        torch.cuda.synchronize()
         env.timer.start(tag)
         for src in range(env.world_size):
             buf = data if env.rank == src else recv
@@ -25,13 +27,13 @@ def batch_bcast(env, sz_tag, size, repeat):
 
 
 def eval_broadcast(env):
-    small_size = (10, 1024, 1024)
-    middle_size = (100, 1024, 1024)
-    large_size = (1000, 1024, 1024)
-    repeat = 10
-    batch_bcast(env, 'small broadcast', small_size, repeat)
-    batch_bcast(env, 'middle broadcast', middle_size, repeat//2)
-    batch_bcast(env, 'large broadcast', large_size, repeat//4)
+    sizes = [('4K', (4,1024)), ('64K', (64, 1024)),  ('512K', (512, 1024)),
+             ('4M', (4, 1024, 1024)), ('64M', (64, 1024, 1024)), ('256M', (256, 1024, 1024)),
+             ('1G', (1024, 1024, 1024)), ('2G', (2, 1024, 1024, 1024))]
+    repeats = {'K':1000, 'M':20, 'G':2}
+    for tag, size in sizes:
+        repeat = repeats[tag[-1]]
+        batch_bcast(env, tag, size, repeat)
 
 
 def evaluate(rank, nprocs, backend):
@@ -47,7 +49,7 @@ def evaluate(rank, nprocs, backend):
 
 
 if __name__ == "__main__":
-    nprocs = 8
-    backend = 'gloo'
-    backend = 'nccl'
+    num_GPUs = torch.cuda.device_count()
+    nprocs = num_GPUs if num_GPUs>1 else 4
+    backend = 'nccl' if num_GPUs>1 else 'gloo'
     torch.multiprocessing.spawn(evaluate, (nprocs, backend), nprocs)
