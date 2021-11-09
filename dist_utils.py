@@ -27,7 +27,7 @@ class DistEnv:
         return '<DistEnv %d/%d %s>'%(self.rank, self.world_size, self.backend)
 
     def init_device(self):
-        if self.backend == 'nccl':
+        if torch.cuda.device_count()>1:
             self.device = torch.device('cuda', self.rank)
             torch.cuda.set_device(self.device)
         else:

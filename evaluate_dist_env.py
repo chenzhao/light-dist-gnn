@@ -28,7 +28,7 @@ def eval_broadcast(env):
     small_size = (10, 1024, 1024)
     middle_size = (100, 1024, 1024)
     large_size = (1000, 1024, 1024)
-    repeat = 100
+    repeat = 10
     batch_bcast(env, 'small broadcast', small_size, repeat)
     batch_bcast(env, 'middle broadcast', middle_size, repeat//2)
     batch_bcast(env, 'large broadcast', large_size, repeat//4)

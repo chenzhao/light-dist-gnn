@@ -28,6 +28,8 @@ def broadcast_testing(local_adj_parts, local_feature):
 
 
 def broadcast(local_adj_parts, local_feature):
+    if torch.cuda.device_count()<=1:
+        return broadcast_testing(local_adj_parts, local_feature)
     env = DistEnv.env
     z_loc = torch.zeros((local_adj_parts[0].size(0), local_feature.size(1)), device=env.device)
     for i in range(env.world_size):
@@ -37,6 +39,7 @@ def broadcast(local_adj_parts, local_feature):
             feature_recv = torch.zeros((local_adj_parts[i].size(1), local_feature.size(1)), device=env.device)
         torch.cuda.synchronize()
         env.timer.start('broadcast')
+        env.logger.log(f'{feature_recv.size()}, {feature_recv.dtype}, {feature_recv.device}', rank=0)
         env.broadcast(feature_recv, src=i)
         torch.cuda.synchronize()
         env.timer.stop('broadcast')
@@ -54,10 +57,7 @@ class DistGCNLayer(torch.autograd.Function):
         ctx.save_for_backward(local_feature, weight)
         ctx.local_adj_parts = local_adj_parts
         ctx.layer = layer
-        if torch.cuda.device_count()<=1:
-            z_local = broadcast_testing(local_adj_parts, local_feature)
-        else:
-            z_local = broadcast(local_adj_parts, local_feature)
+        z_local = broadcast(local_adj_parts, local_feature)
         z_local = torch.mm(z_local, weight)
         return z_local
 
