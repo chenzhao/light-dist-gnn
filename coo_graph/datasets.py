@@ -6,19 +6,10 @@ import numpy
 import scipy
 import torch
 import json
-import torch_geometric
-import dgl
 
 data_root = os.path.join(os.path.dirname(__file__), '..', 'data')
 dgl_root = os.path.join(data_root, 'dgl_datasets')
 pyg_root = os.path.join(data_root, 'pyg_datasets')
-
-dataset_source_mapping = {'cora': dgl.data.CoraGraphDataset,
-                          'reddit': dgl.data.RedditDataset,
-                          'a_quarter_reddit': dgl.data.RedditDataset,
-                          'flickr': torch_geometric.datasets.Flickr,
-                          'yelp': torch_geometric.datasets.Yelp}
-
 
 def save_dataset(edge_index, features, labels, train_mask, val_mask, test_mask, num_nodes, num_edges, num_classes, name):
     if name.startswith('a_quarter'):
@@ -46,15 +37,6 @@ def load_dataset(name):
     return torch.load(path)
 
 
-# # fix wrong data
-# if self.graph_name == 'Yelp':
-#     print('Yelp detected')
-#     self.num_classes = 100
-# elif self.graph_name == 'AmazonProducts':
-#     self.num_classes = 107
-
-
-
 def prepare_dgl_dataset(source, name):
     dgl_dataset: dgl.data.DGLDataset = source(raw_dir=dgl_root)
     g = dgl_dataset[0]
@@ -73,6 +55,14 @@ def prepare_pyg_dataset(source, name):
 
 
 def prepare_dataset(name):
+    import dgl
+    import torch_geometric
+    dataset_source_mapping = {'cora': dgl.data.CoraGraphDataset,
+                              'reddit': dgl.data.RedditDataset,
+                              'a_quarter_reddit': dgl.data.RedditDataset,
+                              'flickr': torch_geometric.datasets.Flickr,
+                              'yelp': torch_geometric.datasets.Yelp}
+
     for path in [data_root, dgl_root, pyg_root]:
         os.makedirs(path, exist_ok=True)
     try:
