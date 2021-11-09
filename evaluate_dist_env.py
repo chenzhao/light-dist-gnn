@@ -10,23 +10,24 @@ from dist_utils import DistEnv
 from torch.multiprocessing import Process
 
 
-def batch_bcast(env, tag, size, repeat):
+def batch_bcast(env, sz_tag, size, repeat):
     data = torch.rand(size, dtype=torch.float32, device=env.device)
     recv = torch.zeros(size, dtype=torch.float32, device=env.device)
+    tag = f'{env.backend}_{env.world_size}_broadcast'
     env.timer.start(tag)
     for i in range(repeat):
         for src in range(env.world_size):
             buf = data if env.rank == src else recv
             env.broadcast(tensor=buf, src=src)
-        env.logger.log(f'{tag} {i+1}/{repeat}')
-    env.timer.stop(tag, f'{env.world_size} broadcast')
+        env.logger.log(f'{sz_tag} {i+1}/{repeat}')
+    env.timer.stop(tag, sz_tag)
 
 
 def eval_broadcast(env):
     small_size = (2, 1024, 1024)
     middle_size = (25, 1024, 1024)
     large_size = (250, 1024, 1024)
-    repeat = 16
+    repeat = 4
     batch_bcast(env, 'small broadcast', small_size, repeat)
     batch_bcast(env, 'middle broadcast', middle_size, repeat//2)
     batch_bcast(env, 'large broadcast', large_size, repeat//4)
