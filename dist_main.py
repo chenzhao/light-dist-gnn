@@ -10,7 +10,7 @@ import torch.distributed as dist
 def process_wrapper(rank, nprocs, backend, func):
     os.environ['MASTER_ADDR'] = '127.0.0.1'
     os.environ['MASTER_PORT'] = '29500'
-    # os.environ['NCCL_DEBUG']='INFO'
+    os.environ['NCCL_DEBUG']='INFO'
     os.environ['NCCL_SOCKET_IFNAME'] = 'lo'
 
     env = dist_utils.DistEnv(rank, nprocs, backend)

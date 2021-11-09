@@ -57,12 +57,12 @@ def copy_data_to_device(g, device):
 def main(env):
     env.logger.log('train begin at proc:', env)
     env.timer.start('total')
-    # g = Parted_COO_Graph('reddit', rank=env.rank, num_parts=env.world_size)
+    g = Parted_COO_Graph('reddit', rank=env.rank, num_parts=env.world_size)
     # g = Parted_COO_Graph('flickr', rank=env.rank, num_parts=env.world_size)
-    g = Parted_COO_Graph('a_quarter_reddit', rank=env.rank, num_parts=env.world_size)
+    # g = Parted_COO_Graph('a_quarter_reddit', rank=env.rank, num_parts=env.world_size)
     env.logger.log('dataset loaded', g)
     copy_data_to_device(g, env.device)
-    train(g, env, total_epoch=10)
+    train(g, env, total_epoch=20)
     env.timer.stop('total')
     env.logger.log(env.timer.summary(), rank=0)
     pass

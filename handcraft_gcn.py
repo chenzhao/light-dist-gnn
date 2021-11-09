@@ -32,21 +32,19 @@ def broadcast(local_adj_parts, local_feature):
     z_loc = torch.zeros((local_adj_parts[0].size(0), local_feature.size(1)), device=env.device)
     for i in range(env.world_size):
         if i == env.rank:
-            feature_recv = local_feature
+            feature_recv = local_feature.clone()
         else:
             feature_recv = torch.zeros((local_adj_parts[i].size(1), local_feature.size(1)), device=env.device)
-        env.timer.barrier_all()
         torch.cuda.synchronize()
         env.timer.start('broadcast')
         env.broadcast(feature_recv, src=i)
+        torch.cuda.synchronize()
         env.timer.stop('broadcast')
 
-        torch.cuda.synchronize()
         env.timer.start('spmm')
         z_loc = torch.addmm(z_loc, local_adj_parts[i], feature_recv)
         torch.cuda.synchronize()
         env.timer.stop('spmm')
-        env.timer.stop('broadcast')
     return z_loc
 
 
