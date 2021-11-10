@@ -61,8 +61,31 @@ def main(env):
     # g = Parted_COO_Graph('flickr', rank=env.rank, num_parts=env.world_size)
     # g = Parted_COO_Graph('a_quarter_reddit', rank=env.rank, num_parts=env.world_size)
     env.logger.log('dataset loaded', g)
+    total = 0
+    for i in range(env.world_size):
+        env.logger.log(f'{g.local_adj_parts[i].size()}{g.local_adj_parts[i].values().size()}')
+        total += g.local_adj_parts[i].values().size(0)
+    env.logger.log(f'{g.local_features.size()}, {total} {g.local_adj.values().size(0)}')
     copy_data_to_device(g, env.device)
     train(g, env, total_epoch=20)
     env.timer.stop('total')
-    env.logger.log(env.timer.summary(), rank=0)
+    env.logger.log(env.timer.detail_all(), rank=0)
+    return
     pass
+
+    env.logger.log('test begin at proc:', env)
+    data = torch.rand((1, 1024,1024), dtype=torch.float ,device=env.device)
+    recv = torch.zeros((1, 1024,1024), dtype=torch.float, device=env.device)
+    for i in range(100):
+        for src in range(env.world_size):
+            if src==env.rank:
+                buf = data
+            else:
+                buf = recv
+            torch.cuda.synchronize()
+            env.timer.start('broadcast')
+            env.broadcast(buf, src)
+            torch.cuda.synchronize()
+            env.timer.stop('broadcast')
+    env.logger.log(env.timer.summary(), rank=0)
+    return 

@@ -10,7 +10,7 @@ def main():
     r = coo_graph.Parted_COO_Graph('reddit', full_graph_cache_enabled=False)
     # r = coo_graph.Parted_COO_Graph('a_quarter_reddit', full_graph_cache_enabled=False)
     print(r.adj.size())
-    r.partition(8)
+    r.partition(4)
 
     # r = COO_Graph('reddit', cached=True)
     # r = COO_Graph('AmazonProducts')

@@ -12,6 +12,7 @@ from torch.multiprocessing import Process
 
 def batch_bcast(env, sz_tag, size, repeat):
     dtype = torch.int8
+    dtype = torch.float
     data = torch.ones(size, dtype=dtype, device=env.device)
     recv = torch.zeros(size, dtype=dtype, device=env.device)
     tag = f'{env.backend}_{env.world_size}_broadcast'
@@ -27,12 +28,15 @@ def batch_bcast(env, sz_tag, size, repeat):
 
 
 def eval_broadcast(env):
-    sizes = [('4K', (4,1024)), ('64K', (64, 1024)),  ('512K', (512, 1024)),
-             ('4M', (4, 1024, 1024)), ('64M', (64, 1024, 1024)), ('256M', (256, 1024, 1024)),
-             ('1G', (1024, 1024, 1024)), ('2G', (2, 1024, 1024, 1024))]
-    repeats = {'K':1000, 'M':20, 'G':2}
-    for tag, size in sizes:
-        repeat = repeats[tag[-1]]
+    sizes = [ (160,'L1',[29121, 602]),
+            (160,'L2',[29121, 16]), ]
+    sizes = [(16000, '4K', (4,1024)), 
+            (8000, '16K', (16, 1024)), 
+            (8000, '64K', (64, 1024)),  (2000, '256K', (256, 1024)), 
+            (1000, '1M', (1, 1024, 1024)), (256, '4M', (4, 1024, 1024)), (64, '16M', (16, 1024, 1024)),
+            (32,'64M', (64, 1024, 1024)), (8, '256M', (256, 1024, 1024)), (2, '1G', (1024, 1024, 1024)), (1, '2G', (1, 1024, 1024, 1024))]
+    # repeats = {'K':1000, 'M':20, 'G':2}
+    for repeat, tag, size in sizes:
         batch_bcast(env, tag, size, repeat)
 
 
@@ -45,7 +49,7 @@ def evaluate(rank, nprocs, backend):
     env.timer.start('total')
     eval_broadcast(env)
     env.timer.stop('total')
-    env.logger.log(env.timer.summary(), rank=0)
+    env.logger.log(env.timer.summary_all(), rank=0)
 
 
 if __name__ == "__main__":
