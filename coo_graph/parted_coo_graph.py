@@ -38,7 +38,11 @@ class Parted_COO_Graph():
 
     def __repr__(self):
         masks = ','.join(str(torch.count_nonzero(mask).item()) for mask in [self.train_mask, self.val_mask, self.test_mask])
-        return f'<COO Graph: {self.name}, |V|: {self.num_nodes}, |E|: {self.num_edges}, masks: {masks}>'
+        if self.rank!=-1:
+            local_g = f'<Local: {self.rank}, |V|: {self.local_num_nodes}, |E|: {self.local_num_edges}>'
+        else:
+            local_g = "Full"
+        return f'<COO Graph: {self.name}, |V|: {self.num_nodes}, |E|: {self.num_edges}, masks: {masks}, {local_g}>'
 
     def partition(self, num_parts):
         begin = datetime.datetime.now()
@@ -46,7 +50,11 @@ class Parted_COO_Graph():
         self.num_parts = num_parts
         full_dict = {k:v for k,v in self.attr_dict.items() if k not in ['adj', 'edge_index', 'features']}
         local_dict = {'local_'+x: torch.split(getattr(self,x), self.split_size) for x in ['train_mask', 'labels', 'features']}
-        local_dict.update(dict(zip(['local_adj', 'local_adj_parts'], graph_utils.CAGNET_split(self.adj, self.split_size))))
+        # local_dict.update(dict(zip(['local_adj', 'local_adj_parts'], graph_utils.CAGNET_split(self.adj, self.split_size))))
+        local_adj_list, local_adj_parts_list = graph_utils.CAGNET_split(self.adj, self.split_size)
+        local_dict['local_num_nodes'] = [adj.size(0) for adj in local_adj_list]
+        local_dict['local_num_edges'] = [adj.values().size(0) for adj in local_adj_list]
+        local_dict['local_adj_parts'] = local_adj_parts_list
         for i in range(num_parts):
             full_dict.update({k: v[i] for k, v in local_dict.items()})
             graph_utils.save_cache_dict(full_dict, self.parted_graph_path(i, num_parts))

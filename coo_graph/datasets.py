@@ -4,6 +4,7 @@
 import os
 import numpy
 import scipy
+import scipy.sparse
 import torch
 import json
 
@@ -58,8 +59,9 @@ def prepare_dataset(name):
     import dgl
     import torch_geometric
     dataset_source_mapping = {'cora': dgl.data.CoraGraphDataset,
-                              'reddit': dgl.data.RedditDataset,
-                              'a_quarter_reddit': dgl.data.RedditDataset,
+                              'reddit_reorder': dgl.data.RedditDataset,
+                              'reddit': torch_geometric.datasets.Reddit,
+                              'a_quarter_reddit': torch_geometric.datasets.Reddit,
                               'flickr': torch_geometric.datasets.Flickr,
                               'yelp': torch_geometric.datasets.Yelp}
 
@@ -77,6 +79,48 @@ def prepare_dataset(name):
         pass
 
 
-if __name__ == '__main__':
+
+def check_edges(edge_index, num_nodes):
+    print(f'edges {edge_index[0].size(0)} nodes:{num_nodes}')
+    num_parts = 4
+    split_size = num_nodes//num_parts
+    first_limit = split_size
+    last_limit = num_nodes - split_size
+
+    fist_size = (edge_index[0] < first_limit).sum()
+    last_size = (edge_index[0] > last_limit).sum()
+    print(f'first block {fist_size} last block {last_size}')
+
+    mask_first = (edge_index[0] < first_limit) & (edge_index[1] < first_limit)
+    mask_last = (edge_index[0] > last_limit) & (edge_index[1] > last_limit)
+
+    fist_size = edge_index[0][mask_first].size(0)
+    last_size = edge_index[0][mask_last].size(0)
+    print(f'first p {fist_size} last p {last_size}')
+
+
+def main():
+    r = load_dataset('reddit')
+    check_edges(r['edge_index'], r['num_nodes'])
+
+    data = numpy.load(os.path.join(dgl_root, 'reddit', 'reddit_data.npz'))
+    x = torch.from_numpy(data['feature']).to(torch.float)
+    y = torch.from_numpy(data['label']).to(torch.long)
+    # split = torch.from_numpy(data['node_types'])
+
+    adj = scipy.sparse.load_npz(os.path.join(dgl_root, 'reddit', 'reddit_graph.npz'))
+    row = torch.from_numpy(adj.row).to(torch.long)
+    col = torch.from_numpy(adj.col).to(torch.long)
+    edge_index = torch.stack([row, col], dim=0)
+    check_edges(edge_index, x.size(0))
+
+
+
+    return
     for dataset_name in ['cora', 'reddit', 'flickr', 'yelp']:
         prepare_dataset(dataset_name)
+    pass
+
+
+if __name__ == '__main__':
+    main()

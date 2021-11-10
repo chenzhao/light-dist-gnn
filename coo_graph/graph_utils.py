@@ -27,7 +27,9 @@ def sym_normalization(edge_index, num_nodes, faster_device='cuda:0'):
     original_device = edge_index.device
     # begin = datetime.datetime.now()
     edge_index = add_self_loops(edge_index, num_nodes)
-    A = torch.sparse_coo_tensor(edge_index, torch.ones(len(edge_index[0])), (num_nodes, num_nodes), device=faster_device)
+    # A = torch.sparse_coo_tensor(edge_index, torch.ones(len(edge_index[0])), (num_nodes, num_nodes)).coalesce()
+    # return A
+    A = torch.sparse_coo_tensor(edge_index, torch.ones(len(edge_index[0])), (num_nodes, num_nodes), device=faster_device).coalesce()
     degree_vec = torch.sparse.sum(A, 0).pow(-0.5).to_dense()
     I_edge_index = torch.stack((torch.arange(num_nodes), torch.arange(num_nodes)))
     D_rsqrt = torch.sparse_coo_tensor(I_edge_index, degree_vec, (num_nodes, num_nodes), device=faster_device)
@@ -83,12 +85,18 @@ def make_2D_coo(idx0, idx1, val, sz0, sz1):  # to mat: row is 0, col is 1
     return torch.sparse_coo_tensor(torch.stack([idx0, idx1]), val, (sz0, sz1)).coalesce()
 
 
-def CAGNET_split(coo_adj, split_size, faster_device='cuda:0'):  # A.T==A only
+def CAGNET_split(coo_adj, split_size):  # A.T==A only
     seps = list(range(0, coo_adj.size(0), split_size))+[coo_adj.size(0)]
     row_parts = split_2D_coo(coo_adj.indices()[0], coo_adj.indices()[1], coo_adj.values(), seps)  # Ai is rows part i
     row_part_coo_list, row_col_part_coos_list = [], []
     for part_row_idx, full_col_idx, val, row_sz in row_parts:
+        print(f'coo split: {val.size(0)}, {row_sz}')
         row_part_coo_list.append(make_2D_coo(part_row_idx, full_col_idx, val, row_sz, coo_adj.size(0)))
-        row_col_part_coos_list.append( [make_2D_coo(p_row, p_col, p_val, row_sz, col_sz) \
-                for p_col, p_row, p_val, col_sz in split_2D_coo(full_col_idx, part_row_idx, val, seps)])
+        # row_col_part_coos_list.append( [make_2D_coo(p_row, p_col, p_val, row_sz, col_sz) \
+        #         for p_col, p_row, p_val, col_sz in split_2D_coo(full_col_idx, part_row_idx, val, seps)])
+        row_col_part_coos = []
+        for p_col, p_row, p_val, col_sz in split_2D_coo(full_col_idx, part_row_idx, val, seps):
+            print(f'\tcoo split: {p_val.size(0)}, {row_sz}, {col_sz}')
+            row_col_part_coos.append(make_2D_coo(p_row, p_col, p_val, row_sz, col_sz))
+        row_col_part_coos_list.append(row_col_part_coos)
     return row_part_coo_list, row_col_part_coos_list
