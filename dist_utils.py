@@ -39,8 +39,10 @@ class DistEnv:
     def broadcast(self, tensor, src):
         dist.broadcast(tensor, src=src, group=self.world_group)
 
-    def all_gather(self, recv_list, src_t):
+    def all_gather_then_cat(self, src_t):
+        recv_list = [torch.zeros_like(src_t) for _ in range(self.world_size)]
         dist.all_gather(recv_list, src_t, group=self.world_group)
+        return torch.cat(recv_list, dim=0)
 
     def barrier_all(self):
         dist.barrier(self.world_group)
@@ -115,6 +117,31 @@ class DistTimer(DistUtil):
             detail_dict[key] = ' '.join("%6.2f"%x for x in data)
         s = '\ntimer summary:\n' +  "\n".join("%6.2fs %6.2fs %5d %s \ndetail: %s \n--------------" % (avg_dict[key], std_dict[key], self.count_dict[key], key, detail_dict[key]) for key in self.duration_dict)
         return s
+
+    class TimerCtx:
+        def __init__(self, timer, key, cuda):
+            self.cuda = cuda
+            self.timer = timer
+            self.key = key
+
+        def __enter__(self):
+            if self.cuda:
+                torch.cuda.synchronize()
+            self.timer.start_time_dict[self.key] = time.time()
+            return self
+
+        def __exit__(self, type, value, traceback):
+            if self.cuda:
+                torch.cuda.synchronize()
+            d=time.time() - self.timer.start_time_dict[self.key]
+            self.timer.duration_dict[self.key]+=d
+            self.timer.count_dict[self.key]+=1
+
+    def timing(self, key):
+        return DistTimer.TimerCtx(self, key, cuda=False)
+
+    def timing_cuda(self, key):
+        return DistTimer.TimerCtx(self, key, cuda=True)
 
     def start(self, key):
         self.start_time_dict[key] = time.time()

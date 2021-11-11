@@ -111,14 +111,13 @@ void printCusparseSpMat(int32_t rows, int32_t cols, int32_t nnz, int32_t *row_in
   delete [] col_indices_host;
 }
 
-// at::Tensor spmm_gpu(const at::Tensor& A_rowindices, 
-void spmm_gpu(const at::Tensor& A_rowindices, 
+void spmm_cusparse(const at::Tensor& A_rowindices, 
                         const at::Tensor& A_colindices,
                         const at::Tensor& A_values, 
                         int32_t n,
                         int32_t m,
                         at::Tensor& B,
-                        at::Tensor& C) {
+                        at::Tensor& C, float alpha, float beta) {
 
     // cusparseHandle_t handle;
     // CHECK_CUSPARSE(cusparseCreate(&handle));
@@ -146,8 +145,6 @@ void spmm_gpu(const at::Tensor& A_rowindices,
                                         d_a_csrrows, 
                                         CUSPARSE_INDEX_BASE_ZERO));
 
-    float alpha = 1;
-    float beta = 1;
     cusparseMatDescr_t descrA;
     cusparseCreateMatDescr(&descrA);
     cusparseSetMatType(descrA,CUSPARSE_MATRIX_TYPE_GENERAL);
@@ -197,5 +194,5 @@ void spmm_gpu(const at::Tensor& A_rowindices,
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("sparse_coo_tensor_gpu", &sparse_coo_tensor_gpu, "Sparse Tensor GPU-only constructor");
-    m.def("spmm_gpu", &spmm_gpu, "SpMM wrapper for cusparse");
+    m.def("spmm_cusparse", &spmm_cusparse, "SpMM wrapper for cusparse");
 }

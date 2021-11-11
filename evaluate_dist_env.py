@@ -12,7 +12,8 @@ from torch.multiprocessing import Process
 
 def batch_bcast(env, sz_tag, size, repeat):
     dtype = torch.int8
-    dtype = torch.float
+    # dtype = torch.float
+    env.logger.log(f'Size: {sz_tag: <5} Repeat: {repeat}',  rank=0)
     data = torch.ones(size, dtype=dtype, device=env.device)
     recv = torch.zeros(size, dtype=dtype, device=env.device)
     tag = f'{env.backend}_{env.world_size}_broadcast'

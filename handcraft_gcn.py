@@ -14,34 +14,20 @@ except ImportError:
     spmm = lambda A,B,C: C.addmm_(A,B)
 
 
-
 def broadcast(local_adj_parts, local_feature, tag):
     env = DistEnv.env
-    z_loc = torch.zeros((local_adj_parts[0].size(0), local_feature.size(1)), device=env.device)
-    feature_recv = torch.zeros((local_adj_parts[0].size(1), local_feature.size(1)), device=env.device)
+    z_loc = torch.zeros_like(local_feature)
+    feature_bcast = torch.zeros_like(local_feature)
     
-    for i in range(env.world_size):
-        p = local_adj_parts[i].coalesce()
-        if i == env.rank:
-            feature_recv = local_feature.clone()
-        elif i==env.world_size-1:
-            feature_recv = torch.zeros((local_adj_parts[i].size(1), local_feature.size(1)), device=env.device)
-            
-        torch.cuda.synchronize()
+    for src in range(env.world_size):
+        if src==env.rank:
+            feature_bcast = local_feature.clone()
         # env.barrier_all()
+        with env.timer.timing_cuda('broadcast'):
+            dist.broadcast(feature_bcast, src=src)
 
-        env.timer.start('broadcast')
-        dist.broadcast(feature_recv, src=i)
-        torch.cuda.synchronize()
-        env.timer.stop('broadcast', tag)
-
-        #env.barrier_all()
-        env.timer.start('spmm')
-        # spmm_cpp.spmm_cusparse(p.indices()[0].int(), p.indices()[1].int(), p.values(), p.size(0), p.size(1),feature_recv,z_loc, 1,1)
-        # z_loc.addmm_(p, feature_recv)
-        spmm(p, feature_recv, z_loc)
-        torch.cuda.synchronize()
-        env.timer.stop('spmm')
+        with env.timer.timing_cuda('spmm'):
+            spmm(local_adj_parts[src], feature_bcast, z_loc)
     return z_loc
 
 
@@ -52,16 +38,19 @@ class DistGCNLayer(torch.autograd.Function):
         ctx.local_adj_parts = local_adj_parts
         ctx.tag = tag
         z_local = broadcast(local_adj_parts, local_feature, 'Forward'+tag)
-        z_local = torch.mm(z_local, weight)
+        with DistEnv.env.timer.timing_cuda('mm'):
+            z_local = torch.mm(z_local, weight)
         return z_local
 
     @staticmethod
     def backward(ctx, grad_output):
         local_feature,  weight = ctx.saved_tensors
         ag = broadcast(ctx.local_adj_parts, grad_output, 'Backward'+ctx.tag)
-        grad_feature = torch.mm(ag, weight.t())
-        grad_weight = torch.mm(local_feature.t(), ag)
-        DistEnv.env.all_reduce_sum(grad_weight)
+        with DistEnv.env.timer.timing_cuda('mm'):
+            grad_feature = torch.mm(ag, weight.t())
+            grad_weight = torch.mm(local_feature.t(), ag)
+        with DistEnv.env.timer.timing_cuda('all_reduce'):
+            DistEnv.env.all_reduce_sum(grad_weight)
         return grad_feature, grad_weight, None, None
 
 

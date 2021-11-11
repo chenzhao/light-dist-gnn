@@ -20,6 +20,31 @@ class Parted_COO_Graph():
         assert self.num_parts > 1
         return (self.num_nodes+self.num_parts-1)//self.num_parts
 
+
+    def sparse_resize(self, sp_t, size):
+        resized = torch.sparse_coo_tensor(sp_t._indices(), sp_t._values(), size, device=self.device).coalesce()
+        return resized
+
+    def pad(self):
+        pad_size = self.split_size*self.num_parts - self.num_nodes
+        assert(pad_size>=0)
+        if pad_size==0:
+            return self
+        if self.local_features.size(0)<self.split_size:  # last row block
+            self.local_features.resize_(self.split_size, self.local_features.size(1))
+            self.local_adj_parts = [self.sparse_resize(p, (self.split_size, self.split_size)) for p in self.local_adj_parts]
+            self.local_train_mask.resize_(self.split_size)
+            self.local_train_mask[-pad_size:]=0
+            self.local_labels.resize_(self.split_size)
+        
+        self.local_adj_parts[-1] = self.sparse_resize(self.local_adj_parts[-1], (self.split_size, self.split_size))
+        for tensor_1d in [self.train_mask, self.val_mask, self.test_mask, self.labels]:
+            tensor_1d.resize_(self.split_size*self.num_parts)
+            tensor_1d[-pad_size:]=0
+        return self
+        
+
+
     def __init__(self, name, preprocess_for='GCN', rank=-1, num_parts=-1, full_graph_cache_enabled=True, device='cpu'):
         self.name, self.preprocess_for, self.rank, self.num_parts, self.device = name, preprocess_for, rank, num_parts, device
         if rank != -1:

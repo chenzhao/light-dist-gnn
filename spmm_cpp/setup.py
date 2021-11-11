@@ -4,9 +4,9 @@ from torch.utils import cpp_extension
 
 
 ext_name = 'spmm_cpp'
-cpp_src = 'cusparse_spmm.cpp' 
+cpp_src = 'spmm.cpp' 
 if torch.version.cuda.startswith('10'):
-    cpp_src = 'cusparse_spmm_original.cpp' 
+    cpp_src = 'spmm_original.cpp' 
 
 
 setup(name=ext_name, 
