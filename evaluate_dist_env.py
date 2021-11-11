@@ -23,19 +23,18 @@ def batch_bcast(env, sz_tag, size, repeat):
             buf = data if env.rank == src else recv
             env.broadcast(tensor=buf, src=src)
         torch.cuda.synchronize()
-        env.logger.log(f'{sz_tag} {i+1}/{repeat}', rank=0)
+        env.logger.log(f'{sz_tag} {i+1}/{repeat}', oneline=True, rank=0)
         env.timer.stop(tag, sz_tag)
 
 
 def eval_broadcast(env):
-    sizes = [ (160,'L1',[29121, 602]),
-            (160,'L2',[29121, 16]), ]
+    # sizes = [ (160,'L1',[29121, 602]),
+            # (160,'L2',[29121, 16]), ]
     sizes = [(16000, '4K', (4,1024)), 
             (8000, '16K', (16, 1024)), 
             (8000, '64K', (64, 1024)),  (2000, '256K', (256, 1024)), 
             (1000, '1M', (1, 1024, 1024)), (256, '4M', (4, 1024, 1024)), (64, '16M', (16, 1024, 1024)),
             (32,'64M', (64, 1024, 1024)), (8, '256M', (256, 1024, 1024)), (2, '1G', (1024, 1024, 1024)), (1, '2G', (1, 1024, 1024, 1024))]
-    # repeats = {'K':1000, 'M':20, 'G':2}
     for repeat, tag, size in sizes:
         batch_bcast(env, tag, size, repeat)
 

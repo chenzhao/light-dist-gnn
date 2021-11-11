@@ -34,7 +34,7 @@ def train(g, env, total_epoch):
             output_parts[env.world_size - 1] = output_parts[env.world_size - 1][:last_part_size, :]
             outputs = torch.cat(output_parts, dim=0)
 
-            acc = lambda mask: (outputs[mask].max(1)[1].eq(g.labels[mask]).sum()/mask.sum()).item()
+            acc = lambda mask: outputs[mask].max(1)[1].eq(g.labels[mask]).sum().item()/mask.sum().item()
             env.logger.log(f'Epoch: {epoch:03d}, Train: {acc(g.train_mask):.4f}, Val: {acc(g.val_mask):.4f}, Test: {acc(g.test_mask):.4f}', rank=0)
 
 def main(env, args):

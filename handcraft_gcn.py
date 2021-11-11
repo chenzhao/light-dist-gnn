@@ -5,7 +5,14 @@ import torch.nn.functional as F
 
 from dist_utils import DistEnv
 import torch.distributed as dist
-import spmm_cpp
+
+try:
+    import spmm_cpp
+    spmm = lambda A,B,C: spmm_cpp.spmm_cusparse(A.indices()[0].int(), A.indices()[1].int(), A.values(), A.size(0), \
+                                                                    A.size(1), B, C, 1, 1)
+except ImportError:
+    spmm = lambda A,B,C: C.addmm_(A,B)
+
 
 
 def broadcast(local_adj_parts, local_feature, tag):
@@ -30,8 +37,9 @@ def broadcast(local_adj_parts, local_feature, tag):
 
         #env.barrier_all()
         env.timer.start('spmm')
-        spmm_cpp.spmm_cusparse(p.indices()[0].int(), p.indices()[1].int(), p.values(), p.size(0), p.size(1),feature_recv,z_loc, 1,1)
+        # spmm_cpp.spmm_cusparse(p.indices()[0].int(), p.indices()[1].int(), p.values(), p.size(0), p.size(1),feature_recv,z_loc, 1,1)
         # z_loc.addmm_(p, feature_recv)
+        spmm(p, feature_recv, z_loc)
         torch.cuda.synchronize()
         env.timer.stop('spmm')
     return z_loc

@@ -53,7 +53,6 @@ class DistEnv:
             for dst in range(src+1, self.world_size):
                 self.p2p_group_dict[(src, dst)] = dist.new_group([src, dst])
                 self.p2p_group_dict[(dst, src)] = self.p2p_group_dict[(src, dst)]
-        # print('dist groups inited')
 
 
 class DistUtil:
@@ -62,6 +61,12 @@ class DistUtil:
 
 
 class DistLogger(DistUtil):
+    def __init__(self, env):
+        super().__init__(env)
+        self.log_root = os.path.join(os.path.dirname(__file__), f'logs_{env.world_size}')
+        os.makedirs(self.log_root, exist_ok=True)
+        self.log_fname = os.path.join(self.log_root, 'all_log_%d.txt'%self.env.rank)
+
     def log(self, *args, oneline=False, rank=-1):
         if rank!=-1 and self.env.rank!=rank:
             return
@@ -69,7 +74,7 @@ class DistLogger(DistUtil):
         tail = '\r' if oneline else '\n'
         the_whole_line = head+' '.join(map(str, args))+tail
         print(the_whole_line, end='', flush=True)  # to prevent line breaking
-        with open('all_log_%d.txt'%self.env.rank, 'a+') as f:
+        with open(self.log_fname, 'a+') as f:
             print(the_whole_line, end='', file=f, flush=True)  # to prevent line breaking
 
 
@@ -110,12 +115,6 @@ class DistTimer(DistUtil):
             detail_dict[key] = ' '.join("%6.2f"%x for x in data)
         s = '\ntimer summary:\n' +  "\n".join("%6.2fs %6.2fs %5d %s \ndetail: %s \n--------------" % (avg_dict[key], std_dict[key], self.count_dict[key], key, detail_dict[key]) for key in self.duration_dict)
         return s
-
-    def barrier_all(self):
-        return
-        self.start('barrier')
-        self.env.barrier_all()
-        self.stop('barrier')
 
     def start(self, key):
         self.start_time_dict[key] = time.time()

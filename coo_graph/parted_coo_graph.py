@@ -37,7 +37,7 @@ class Parted_COO_Graph():
             setattr(self, attr, graph_utils.to(cached_attr_dict[attr], device))
 
     def __repr__(self):
-        masks = ','.join(str(torch.count_nonzero(mask).item()) for mask in [self.train_mask, self.val_mask, self.test_mask])
+        masks = ','.join(str(torch.sum(mask).item()) for mask in [self.train_mask, self.val_mask, self.test_mask])
         if self.rank!=-1:
             local_g = f'<Local: {self.rank}, |V|: {self.local_num_nodes}, |E|: {self.local_num_edges}>'
         else:
