@@ -6,15 +6,6 @@ import datetime
 
 import random
 import numpy as np
-def set_seed(seed=0):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-set_seed()
 
 
 def add_self_loops(edge_index, num_nodes):  # from pyg
@@ -43,13 +34,18 @@ def sym_normalization(edge_index, num_nodes, faster_device='cuda:0'):
     return DAD.coalesce().to(original_device)
 
 
-
-
 def save_cache_dict(d, path):
     if os.path.exists(path):
         print(f'warning: cache file {path} is overwritten.')
     torch.save(d, path)
 
+
+def to(v, device):
+    if type(v) == torch.Tensor:
+        return v.to(device)
+    if type(v) in (list,tuple) and type(v[0]) == torch.Tensor:
+        return [i.to(device) for i in v]
+    return v
 
 def load_cache_dict(path):
     if not os.path.exists(path):

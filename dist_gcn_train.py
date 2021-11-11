@@ -9,21 +9,19 @@ import torch.nn.functional as F
 def train(g, env, total_epoch):
     model = GCN(g, env)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-    torch.cuda.synchronize()
-    env.timer.start('training')
     for epoch in range(total_epoch):
-        begin = datetime.datetime.now()
-        outputs = model()
+        env.timer.start('epoch')
+        outputs = model(g.local_features)
         optimizer.zero_grad()
-        if list(g.local_labels[g.local_train_mask].size())[0] > 0:
+        if g.local_labels[g.local_train_mask].size(0) > 0:
             loss = F.nll_loss(outputs[g.local_train_mask], g.local_labels[g.local_train_mask])
-            loss.backward()
         else:
-            env.logger.log('Warning: no training nodes in this partition!')
-            fake_loss = (outputs * 0).sum()
-            fake_loss.backward()
+            env.logger.log('Warning: no training nodes in this partition! Backward fake loss.')
+            loss = (outputs * 0).sum()
+        loss.backward()
         optimizer.step()
-        env.logger.log("Epoch {:05d} | Loss {:.4f} | Time: {}".format(epoch, loss.item(), datetime.datetime.now()-begin), rank=0)
+        env.logger.log("Epoch {:05d} | Loss {:.4f}".format(epoch, loss.item()), rank=0)
+        env.timer.stop('epoch')
 
         if (epoch+1)%5==0:
             output_parts = [torch.zeros(g.split_size, g.num_classes, device=env.device) for _ in range(env.world_size)]
@@ -36,32 +34,15 @@ def train(g, env, total_epoch):
             output_parts[env.world_size - 1] = output_parts[env.world_size - 1][:last_part_size, :]
             outputs = torch.cat(output_parts, dim=0)
 
-            if env.rank == 0:
-                accs =  []
-                for mask in [g.train_mask, g.val_mask, g.test_mask]:
-                    pred = outputs[mask].max(1)[1]
-                    acc = pred.eq(g.labels[mask]).sum().item() / mask.sum().item()
-                    accs.append(acc)
-                env.logger.log('Epoch: {:03d}, Train: {:.4f}, Val: {:.4f}, Test: {:.4f}'.format(epoch, accs[0], accs[1], accs[2]), rank=0)
-    env.timer.stop('training')
+            acc = lambda mask: (outputs[mask].max(1)[1].eq(g.labels[mask]).sum()/mask.sum()).item()
+            env.logger.log(f'Epoch: {epoch:03d}, Train: {acc(g.train_mask):.4f}, Val: {acc(g.val_mask):.4f}, Test: {acc(g.test_mask):.4f}', rank=0)
 
-
-def copy_data_to_device(g, device):
-    g.local_features = g.local_features.to(device)
-    for i in range(len(g.local_adj_parts)):
-        g.local_adj_parts[i] = g.local_adj_parts[i].to(device)
-    g.local_labels = g.local_labels.to(device)
-    g.labels = g.labels.to(device)
-
-
-def main(env):
-    env.logger.log('train begin at proc:', env)
+def main(env, args):
+    env.logger.log('proc begin:', env)
     env.timer.start('total')
-    g = Parted_COO_Graph('reddit', rank=env.rank, num_parts=env.world_size)
-    # g = Parted_COO_Graph('flickr', rank=env.rank, num_parts=env.world_size)
-    # g = Parted_COO_Graph('a_quarter_reddit', rank=env.rank, num_parts=env.world_size)
-    env.logger.log('parted graph loaded', g)
-    copy_data_to_device(g, env.device)
-    train(g, env, total_epoch=20)
+    g = Parted_COO_Graph(args.dataset, rank=env.rank, num_parts=env.world_size, device=env.device)
+    env.logger.log('graph loaded', g)
+    train(g, env, total_epoch=args.epoch)
     env.timer.stop('total')
-    env.logger.log(env.timer.detail_all(), rank=0)
+    env.logger.log(env.timer.summary_all(), rank=0)
+

@@ -20,8 +20,8 @@ class Parted_COO_Graph():
         assert self.num_parts > 1
         return (self.num_nodes+self.num_parts-1)//self.num_parts
 
-    def __init__(self, name, preprocess_for='GCN', rank=-1, num_parts=-1, full_graph_cache_enabled=True):
-        self.name, self.preprocess_for, self.rank, self.num_parts = name, preprocess_for, rank, num_parts
+    def __init__(self, name, preprocess_for='GCN', rank=-1, num_parts=-1, full_graph_cache_enabled=True, device='cpu'):
+        self.name, self.preprocess_for, self.rank, self.num_parts, self.device = name, preprocess_for, rank, num_parts, device
         if rank != -1:
             if not os.path.exists(self.parted_graph_path(rank, num_parts)):
                 raise Exception('Not parted yet. Run COO_Graph.partition() first.', self.parted_graph_path(rank, num_parts))
@@ -34,7 +34,7 @@ class Parted_COO_Graph():
                 graph_utils.save_cache_dict(cached_attr_dict, self.full_graph_path())
         self.attr_dict = cached_attr_dict
         for attr in cached_attr_dict:
-            setattr(self, attr, cached_attr_dict[attr])
+            setattr(self, attr, graph_utils.to(cached_attr_dict[attr], device))
 
     def __repr__(self):
         masks = ','.join(str(torch.count_nonzero(mask).item()) for mask in [self.train_mask, self.val_mask, self.test_mask])
