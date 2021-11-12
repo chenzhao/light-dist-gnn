@@ -72,7 +72,7 @@ class COO_Graph(BasicGraph):
             padding_feat = torch.zeros((pad_size, self.features.size(1)), dtype=self.features.dtype, device=self.device)
             features_list[-1] = torch.cat((features_list[-1], padding_feat))
 
-            padding_labels_size = torch.Size(pad_size)+self.labels.size()[1:]
+            padding_labels_size = torch.Size([pad_size])+self.labels.size()[1:]
             padding_labels = torch.zeros(padding_labels_size, dtype=self.labels.dtype, device=self.device)
             attr_dict['labels'] = torch.cat((self.labels, padding_labels))
 

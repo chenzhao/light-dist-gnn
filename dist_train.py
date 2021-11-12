@@ -1,7 +1,5 @@
-import datetime
 from coo_graph import Parted_COO_Graph
-from handcraft_gcn import GCN
-from handcraft_gat import GAT
+from models import GCN, GAT
 
 import torch
 import torch.nn.functional as F
