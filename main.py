@@ -3,7 +3,7 @@ import argparse
 import torch
 
 import dist_utils
-import dist_gcn_train
+import dist_train
 import torch.distributed as dist
 
 
@@ -25,10 +25,10 @@ def process_wrapper(rank, args, func):
 if __name__ == "__main__":
     num_GPUs = torch.cuda.device_count()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--nprocs", type=int, default=num_GPUs if num_GPUs>1 else 4)
+    parser.add_argument("--nprocs", type=int, default=num_GPUs if num_GPUs>1 else 8)
     parser.add_argument("--epoch", type=int, default=20)
     parser.add_argument("--backend", type=str, default='nccl' if num_GPUs>1 else 'gloo')
     parser.add_argument("--dataset", type=str, default='reddit')
     args = parser.parse_args()
-    process_args = (args, dist_gcn_train.main)
+    process_args = (args, dist_train.main)
     torch.multiprocessing.spawn(process_wrapper, process_args, args.nprocs)

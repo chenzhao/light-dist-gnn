@@ -7,9 +7,8 @@ from dist_utils import DistEnv
 import torch.distributed as dist
 
 try:
-    import spmm_cpp
-    spmm = lambda A,B,C: spmm_cpp.spmm_cusparse(A.indices()[0].int(), A.indices()[1].int(), A.values(), A.size(0), \
-                                                                    A.size(1), B, C, 1, 1)
+    from spmm_cpp import spmm_cusparse
+    spmm = lambda A,B,C: spmm_cusparse(A.indices()[0].int(), A.indices()[1].int(), A.values(), A.size(0), A.size(1), B, C, 1, 1)
 except ImportError:
     spmm = lambda A,B,C: C.addmm_(A,B)
 
@@ -33,38 +32,38 @@ def broadcast(local_adj_parts, local_feature, tag):
 
 class DistGCNLayer(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, local_feature, weight, local_adj_parts, tag):
-        ctx.save_for_backward(local_feature, weight)
-        ctx.local_adj_parts = local_adj_parts
+    def forward(ctx, features, weight, adj_parts, tag):
+        ctx.save_for_backward(features, weight)
+        ctx.adj_parts = adj_parts
         ctx.tag = tag
-        z_local = broadcast(local_adj_parts, local_feature, 'Forward'+tag)
+        z_local = broadcast(adj_parts, features, 'Forward'+tag)
         with DistEnv.env.timer.timing_cuda('mm'):
             z_local = torch.mm(z_local, weight)
         return z_local
 
     @staticmethod
     def backward(ctx, grad_output):
-        local_feature,  weight = ctx.saved_tensors
-        ag = broadcast(ctx.local_adj_parts, grad_output, 'Backward'+ctx.tag)
+        features,  weight = ctx.saved_tensors
+        ag = broadcast(ctx.adj_parts, grad_output, 'Backward'+ctx.tag)
         with DistEnv.env.timer.timing_cuda('mm'):
-            grad_feature = torch.mm(ag, weight.t())
-            grad_weight = torch.mm(local_feature.t(), ag)
+            grad_features = torch.mm(ag, weight.t())
+            grad_weight = torch.mm(features.t(), ag)
         with DistEnv.env.timer.timing_cuda('all_reduce'):
             DistEnv.env.all_reduce_sum(grad_weight)
-        return grad_feature, grad_weight, None, None
+        return grad_features, grad_weight, None, None
 
 
 class GCN(nn.Module):
     def __init__(self, g, env, hidden_dim=16):
         super().__init__()
         self.g, self.env = g, env
-        in_dim, out_dim = g.local_features.size(1), g.num_classes
+        in_dim, out_dim = g.features.size(1), g.num_classes
         torch.manual_seed(0)
         self.weight1 = nn.Parameter(torch.rand(in_dim, hidden_dim).to(env.device))
         self.weight2 = nn.Parameter(torch.rand(hidden_dim, out_dim).to(env.device))
 
     def forward(self, features):
-        hidden_features1 = F.relu(DistGCNLayer.apply(features, self.weight1, self.g.local_adj_parts, 'L1'))
-        outputs = DistGCNLayer.apply(hidden_features1, self.weight2, self.g.local_adj_parts,  'L2')
+        hidden_features1 = F.relu(DistGCNLayer.apply(features, self.weight1, self.g.adj_parts, 'L1'))
+        outputs = DistGCNLayer.apply(hidden_features1, self.weight2, self.g.adj_parts,  'L2')
         return F.log_softmax(outputs, 1)
 

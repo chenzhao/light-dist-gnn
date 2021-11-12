@@ -1,6 +1,7 @@
 import datetime
 from coo_graph import Parted_COO_Graph
 from handcraft_gcn import GCN
+from handcraft_gat import GAT
 
 import torch
 import torch.nn.functional as F
@@ -8,10 +9,11 @@ import torch.nn.functional as F
 
 def train(g, env, total_epoch):
     model = GCN(g, env)
+    # model = GAT(g, env)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     for epoch in range(total_epoch):
         with env.timer.timing('epoch'):
-            outputs = model(g.local_features)
+            outputs = model(g.features)
             optimizer.zero_grad()
             if g.local_labels[g.local_train_mask].size(0) > 0:
                 loss = F.nll_loss(outputs[g.local_train_mask], g.local_labels[g.local_train_mask])
@@ -31,7 +33,7 @@ def train(g, env, total_epoch):
 def main(env, args):
     env.logger.log('proc begin:', env)
     with env.timer.timing('total'):
-        g = Parted_COO_Graph(args.dataset, rank=env.rank, num_parts=env.world_size, device=env.device).pad()
+        g = Parted_COO_Graph(args.dataset, rank=env.rank, num_parts=env.world_size, device=env.device)
         env.logger.log('graph loaded', g)
         train(g, env, total_epoch=args.epoch)
     env.logger.log(env.timer.summary_all(), rank=0)

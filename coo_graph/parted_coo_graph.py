@@ -6,95 +6,109 @@ from . import graph_utils
 from . import datasets
 
 
-class Parted_COO_Graph():
-    def full_graph_path(self, root=datasets.data_root):
-        return os.path.join(root, f'{self.name}_{self.preprocess_for}_full.coo_graph')
-
-    def parted_graph_path(self, rank, total_parted, root=datasets.data_root):
-        dirpath = os.path.join(root, f'{self.name}_{self.preprocess_for}_{total_parted}_parts')
-        os.makedirs(dirpath, exist_ok=True)
-        return os.path.join(dirpath, f'part_{rank}_of_{total_parted}.coo_graph')
-
-    @property
-    def split_size(self):
-        assert self.num_parts > 1
-        return (self.num_nodes+self.num_parts-1)//self.num_parts
-
-
-    def sparse_resize(self, sp_t, size):
-        resized = torch.sparse_coo_tensor(sp_t._indices(), sp_t._values(), size, device=self.device).coalesce()
-        return resized
-
-    def pad(self):
-        pad_size = self.split_size*self.num_parts - self.num_nodes
-        assert(pad_size>=0)
-        if pad_size==0:
-            return self
-        if self.local_features.size(0)<self.split_size:  # last row block
-            self.local_features.resize_(self.split_size, self.local_features.size(1))
-            self.local_adj_parts = [self.sparse_resize(p, (self.split_size, self.split_size)) for p in self.local_adj_parts]
-            self.local_train_mask.resize_(self.split_size)
-            self.local_train_mask[-pad_size:]=0
-            self.local_labels.resize_(self.split_size)
-        
-        self.local_adj_parts[-1] = self.sparse_resize(self.local_adj_parts[-1], (self.split_size, self.split_size))
-        for tensor_1d in [self.train_mask, self.val_mask, self.test_mask, self.labels]:
-            tensor_1d.resize_(self.split_size*self.num_parts)
-            tensor_1d[-pad_size:]=0
-        return self
-        
-
-
-    def __init__(self, name, preprocess_for='GCN', rank=-1, num_parts=-1, full_graph_cache_enabled=True, device='cpu'):
-        self.name, self.preprocess_for, self.rank, self.num_parts, self.device = name, preprocess_for, rank, num_parts, device
-        if rank != -1:
-            if not os.path.exists(self.parted_graph_path(rank, num_parts)):
-                raise Exception('Not parted yet. Run COO_Graph.partition() first.', self.parted_graph_path(rank, num_parts))
-            cached_attr_dict = graph_utils.load_cache_dict(self.parted_graph_path(rank, num_parts))
-        else:
-            if full_graph_cache_enabled and os.path.exists(self.full_graph_path()):
-                cached_attr_dict = graph_utils.load_cache_dict(self.full_graph_path())
-            else:
-                cached_attr_dict = self.preprocess(datasets.load_dataset(name))
-                graph_utils.save_cache_dict(cached_attr_dict, self.full_graph_path())
-        self.attr_dict = cached_attr_dict
-        for attr in cached_attr_dict:
-            setattr(self, attr, graph_utils.to(cached_attr_dict[attr], device))
+class BasicGraph:
+    def __init__(self, d, name, device):
+        self.name, self.device, self.attr_dict = name, device, d
+        self.adj, self.features, self.labels           = (d[t].to(device) for t in ("adj", "features", "labels"))
+        self.train_mask, self.val_mask, self.test_mask = (d[t].bool().to(device) for t in ("train_mask", 'val_mask', 'test_mask'))
+        self.num_nodes, self.num_edges, self.num_classes = d["num_nodes"], d['num_edges'], d['num_classes']
 
     def __repr__(self):
         masks = ','.join(str(torch.sum(mask).item()) for mask in [self.train_mask, self.val_mask, self.test_mask])
-        if self.rank!=-1:
-            local_g = f'<Local: {self.rank}, |V|: {self.local_num_nodes}, |E|: {self.local_num_edges}>'
+        return f'<COO Graph: {self.name}, |V|: {self.num_nodes}, |E|: {self.num_edges}, masks: {masks}>'
+
+
+class GraphCache:
+    @staticmethod
+    def full_graph_path(name, preprocess_for, root=datasets.data_root):
+        return os.path.join(root, f'{name}_{preprocess_for}_full.coo_graph')
+    @staticmethod
+    def parted_graph_path(name, preprocess_for, rank, num_parts, root=datasets.data_root):
+        dirpath = os.path.join(root, f'{name}_{preprocess_for}_{num_parts}_parts')
+        os.makedirs(dirpath, exist_ok=True)
+        return os.path.join(dirpath, f'part_{rank}_of_{num_parts}.coo_graph')
+    @staticmethod
+    def save_dict(d, path):
+        if os.path.exists(path):
+            print(f'warning: cache file {path} is overwritten.')
+        d_to_save = {}
+        for k, v in d.items():
+            d_to_save[k] = v.clone() if type(v)==torch.Tensor else v
+        torch.save(d_to_save, path)
+    @staticmethod
+    def load_dict(path):
+        d = torch.load(path)
+        updated_d = {}
+        for k, v in d.items():
+            if type(v) == torch.Tensor and v.is_sparse:
+                updated_d[k] = v.coalesce()
+        d.update(updated_d)
+        return d
+
+
+class COO_Graph(BasicGraph):
+    def __init__(self, name, preprocess_for='GCN', full_graph_cache_enabled=True, device='cpu'):
+        self.preprocess_for = preprocess_for
+        self.cache_path = GraphCache.full_graph_path(name, preprocess_for)
+        if full_graph_cache_enabled and os.path.exists(self.cache_path):
+            cached_attr_dict = GraphCache.load_dict(self.cache_path)
         else:
-            local_g = "Full"
-        return f'<COO Graph: {self.name}, |V|: {self.num_nodes}, |E|: {self.num_edges}, masks: {masks}, {local_g}>'
+            src_data = datasets.load_dataset(name)
+            cached_attr_dict = graph_utils.preprocess(src_data, preprocess_for)  # norm feat, remove edge_index, add adj
+            GraphCache.save_dict(cached_attr_dict, self.cache_path)
+        super().__init__(cached_attr_dict, name, device)
 
-    def partition(self, num_parts):
+    def partition(self, num_parts, padding=True):
         begin = datetime.datetime.now()
-        print(f'{num_parts} partition begin', self.full_graph_path(), begin)
-        self.num_parts = num_parts
-        full_dict = {k:v for k,v in self.attr_dict.items() if k not in ['adj', 'edge_index', 'features']}
-        local_dict = {'local_'+x: torch.split(getattr(self,x), self.split_size) for x in ['train_mask', 'labels', 'features']}
-        # local_dict.update(dict(zip(['local_adj', 'local_adj_parts'], graph_utils.CAGNET_split(self.adj, self.split_size))))
-        local_adj_list, local_adj_parts_list = graph_utils.CAGNET_split(self.adj, self.split_size)
-        local_dict['local_num_nodes'] = [adj.size(0) for adj in local_adj_list]
-        local_dict['local_num_edges'] = [adj.values().size(0) for adj in local_adj_list]
-        local_dict['local_adj_parts'] = local_adj_parts_list
+        print(self.name, num_parts, 'partition begin', begin)
+        attr_dict = self.attr_dict.copy()
+        split_size = (self.num_nodes+num_parts-1)//num_parts
+        pad_size = split_size*num_parts-self.num_nodes
+
+        adj_list = graph_utils.sparse_2d_split(self.adj, split_size)
+        features_list = list(torch.split(self.features, split_size))
+
+        if padding and pad_size>0:
+            padding_feat = torch.zeros((pad_size, self.features.size(1)), dtype=self.features.dtype, device=self.device)
+            features_list[-1] = torch.cat((features_list[-1], padding_feat))
+
+            padding_labels_size = torch.Size(pad_size)+self.labels.size()[1:]
+            padding_labels = torch.zeros(padding_labels_size, dtype=self.labels.dtype, device=self.device)
+            attr_dict['labels'] = torch.cat((self.labels, padding_labels))
+
+            padding_mask = torch.zeros(pad_size, dtype=self.train_mask.dtype, device=self.device)
+            for key in ['train_mask', 'val_mask', 'test_mask']:
+                attr_dict[key] = torch.cat((attr_dict[key], padding_mask))
+
+            adj_list = [torch.sparse_coo_tensor(adj._indices(), adj._values(), (split_size, split_size*num_parts))
+                        for adj in adj_list]
+
         for i in range(num_parts):
-            full_dict.update({k: v[i] for k, v in local_dict.items()})
-            graph_utils.save_cache_dict(full_dict, self.parted_graph_path(i, num_parts))
-        print(f'{num_parts} partition done ', datetime.datetime.now()-begin)
+            cache_path = GraphCache.parted_graph_path(self.name, self.preprocess_for, i, num_parts)
+            attr_dict.update({'adj': adj_list[i], 'features': features_list[i]})
+            GraphCache.save_dict(attr_dict, cache_path)
+            print(Parted_COO_Graph(self.name, i, num_parts, self.preprocess_for))
+        print(self.name, num_parts, 'partition done', datetime.datetime.now()-begin)
 
-    def preprocess(self, attr_dict):
-        begin = datetime.datetime.now()
-        print('preprocess begin', self.full_graph_path(), begin)
-        attr_dict["features"] = attr_dict["features"] / attr_dict["features"].sum(1, keepdim=True).clamp(min=1)
-        if self.preprocess_for=='GCN':  # make the coo format sym lap matrix
-            attr_dict['adj'] = graph_utils.sym_normalization(attr_dict['edge_index'], attr_dict['num_nodes'])
-        elif self.preprocess_for=='GAT':
-            pass
-        attr_dict.pop('edge_index')
-        print('preprocess done', self.full_graph_path(), datetime.datetime.now()-begin)
-        return attr_dict
 
+class Parted_COO_Graph(BasicGraph):
+    def __init__(self, name, rank, num_parts, preprocess_for='GCN', device='cpu'):
+        # self.full_g = COO_Graph(name, preprocess_for, True, 'cpu')
+        self.rank, self.num_parts = rank, num_parts
+        cache_path = GraphCache.parted_graph_path(name, preprocess_for, rank, num_parts)
+        if not os.path.exists(cache_path):
+            raise Exception('Not parted yet. Run COO_Graph.partition() first.', cache_path)
+        cached_attr_dict = GraphCache.load_dict(cache_path)
+        super().__init__(cached_attr_dict, name, device)
+
+        self.local_num_nodes = self.adj.size(0)
+        self.local_num_edges = self.adj.values().size(0)
+        self.local_labels = self.labels[self.local_num_nodes*rank:self.local_num_nodes*(rank+1)].long()
+        self.local_train_mask = self.train_mask[self.local_num_nodes*rank:self.local_num_nodes*(rank+1)].bool()
+
+        self.adj_parts = graph_utils.sparse_2d_split(self.adj, self.local_num_nodes, split_dim=1)
+
+    def __repr__(self):
+        local_g = f'<Local: {self.rank}, |V|: {self.local_num_nodes}, |E|: {self.local_num_edges}>'
+        return super().__repr__() + local_g
 

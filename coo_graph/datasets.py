@@ -2,15 +2,15 @@
 # All rights reserved.
 
 import os
-import numpy
-import scipy
-import scipy.sparse
 import torch
-import json
+
 
 data_root = os.path.join(os.path.dirname(__file__), '..', 'data')
 dgl_root = os.path.join(data_root, 'dgl_datasets')
 pyg_root = os.path.join(data_root, 'pyg_datasets')
+for path in [data_root, dgl_root, pyg_root]:
+    os.makedirs(path, exist_ok=True)
+
 
 def save_dataset(edge_index, features, labels, train_mask, val_mask, test_mask, num_nodes, num_edges, num_classes, name):
     if name.startswith('a_quarter'):
@@ -26,8 +26,8 @@ def save_dataset(edge_index, features, labels, train_mask, val_mask, test_mask, 
         num_nodes = max_node
         num_edges = edge_index.size(1)
     path = os.path.join(data_root, name+'.torch')
-    torch.save({"edge_index": edge_index, "features": features, "labels": labels,
-                "train_mask": train_mask, 'val_mask': val_mask, 'test_mask': test_mask,
+    torch.save({"edge_index": edge_index.int(), "features": features, "labels": labels.char(),
+                "train_mask": train_mask.bool(), 'val_mask': val_mask.bool(), 'test_mask': test_mask.bool(),
                 "num_nodes": num_nodes, 'num_edges': num_edges, 'num_classes': num_classes}, path)
 
 
@@ -38,46 +38,45 @@ def load_dataset(name):
     return torch.load(path)
 
 
-def prepare_dgl_dataset(source, name):
-    dgl_dataset: dgl.data.DGLDataset = source(raw_dir=dgl_root)
+def prepare_dgl_dataset(dgl_name, tag):
+    import dgl
+    dataset_sources = {'cora': dgl.data.CoraGraphDataset, 'reddit': dgl.data.RedditDataset}
+    dgl_dataset: dgl.data.DGLDataset = dataset_sources[dgl_name](raw_dir=dgl_root)
     g = dgl_dataset[0]
     edge_index = torch.stack(g.adj_sparse('coo'))
     save_dataset(edge_index, g.ndata['feat'], g.ndata['label'],
                  g.ndata['train_mask'], g.ndata['val_mask'], g.ndata['test_mask'],
-                 g.num_nodes(), g.num_edges(), dgl_dataset.num_classes, name)
+                 g.num_nodes(), g.num_edges(), dgl_dataset.num_classes, tag)
 
 
-def prepare_pyg_dataset(source, name):
-    pyg_dataset: torch_geometric.data.Dataset = source(root=os.path.join(pyg_root, name))
+def prepare_pyg_dataset(pyg_name, tag):
+    import torch_geometric
+    dataset_sources = {'reddit': torch_geometric.datasets.Reddit,
+                       'flickr': torch_geometric.datasets.Flickr,
+                       'yelp': torch_geometric.datasets.Yelp,
+                        'amazon-products': torch_geometric.datasets.AmazonProducts}
+    pyg_dataset: torch_geometric.data.Dataset = dataset_sources[pyg_name](root=os.path.join(pyg_root, pyg_name))
     data: torch_geometric.data.Data = pyg_dataset[0]
     save_dataset(data.edge_index, data.x, data.y,
                  data.val_mask, data.val_mask, data.test_mask,
-                 data.num_nodes, data.num_edges, pyg_dataset.num_classes, name)
+                 data.num_nodes, data.num_edges, pyg_dataset.num_classes, tag)
 
 
-def prepare_dataset(name):
-    import dgl
-    import torch_geometric
-    dataset_source_mapping = {'cora': dgl.data.CoraGraphDataset,
-                              'reddit_reorder': dgl.data.RedditDataset,
-                              'reddit': torch_geometric.datasets.Reddit,
-                              'a_quarter_reddit': torch_geometric.datasets.Reddit,
-                              'flickr': torch_geometric.datasets.Flickr,
-                              'yelp': torch_geometric.datasets.Yelp}
-
-    for path in [data_root, dgl_root, pyg_root]:
-        os.makedirs(path, exist_ok=True)
-    try:
-        source_class = dataset_source_mapping[name]
-    except KeyError:
-        raise Exception('no source for such dataset', name)
-    if source_class.__module__.startswith('dgl.'):
-        prepare_dgl_dataset(source_class, name)
-    elif source_class.__module__.startswith('torch_geometric.'):
-        prepare_pyg_dataset(source_class, name)
-    else:  # other libs TODO
-        pass
-
+def prepare_dataset(tag):
+    if tag=='reddit':
+        return prepare_pyg_dataset('reddit', tag)
+    elif tag=='flickr':
+        return prepare_pyg_dataset('flickr', tag)
+    elif tag == 'yelp':  # graphsaints
+        return prepare_pyg_dataset('yelp', tag)
+    elif tag=='amazon-products':  # graphsaints
+        return prepare_pyg_dataset('amazon-products', tag)
+    elif tag=='cora':
+        return prepare_dgl_dataset('cora', tag)
+    elif tag=='reddit_reorder':
+        return prepare_dgl_dataset('reddit', tag)
+    elif tag=='a_quarter_reddit':
+        return prepare_pyg_dataset('reddit', tag)
 
 
 def check_edges(edge_index, num_nodes):
@@ -100,26 +99,8 @@ def check_edges(edge_index, num_nodes):
 
 
 def main():
-    r = load_dataset('reddit')
-    check_edges(r['edge_index'], r['num_nodes'])
-
-    data = numpy.load(os.path.join(dgl_root, 'reddit', 'reddit_data.npz'))
-    x = torch.from_numpy(data['feature']).to(torch.float)
-    y = torch.from_numpy(data['label']).to(torch.long)
-    # split = torch.from_numpy(data['node_types'])
-
-    adj = scipy.sparse.load_npz(os.path.join(dgl_root, 'reddit', 'reddit_graph.npz'))
-    row = torch.from_numpy(adj.row).to(torch.long)
-    col = torch.from_numpy(adj.col).to(torch.long)
-    edge_index = torch.stack([row, col], dim=0)
-    check_edges(edge_index, x.size(0))
-
-
-
-    return
-    for dataset_name in ['cora', 'reddit', 'flickr', 'yelp']:
+    for dataset_name in ['cora', 'reddit', 'flickr', 'yelp', 'a_quarter_reddit','amazon-products']:
         prepare_dataset(dataset_name)
-    pass
 
 
 if __name__ == '__main__':

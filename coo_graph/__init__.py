@@ -1,1 +1,1 @@
-from .parted_coo_graph import Parted_COO_Graph
+from .parted_coo_graph import COO_Graph, Parted_COO_Graph
