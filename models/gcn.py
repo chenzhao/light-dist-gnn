@@ -65,5 +65,6 @@ class GCN(nn.Module):
     def forward(self, features):
         hidden_features1 = F.relu(DistGCNLayer.apply(features, self.weight1, self.g.adj_parts, 'L1'))
         outputs = DistGCNLayer.apply(hidden_features1, self.weight2, self.g.adj_parts,  'L2')
-        return F.log_softmax(outputs, 1)
+        return outputs
+        # return F.log_softmax(outputs, 1)
 

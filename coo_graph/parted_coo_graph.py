@@ -9,7 +9,9 @@ from . import datasets
 class BasicGraph:
     def __init__(self, d, name, device):
         self.name, self.device, self.attr_dict = name, device, d
-        self.adj, self.features, self.labels           = (d[t].to(device) for t in ("adj", "features", "labels"))
+        self.adj = d['adj'].to(device)
+        self.features = d['features'].to(device)
+        self.labels = d['labels'].to(device).to(torch.float if d['labels'].dim()==2 else torch.long)
         self.train_mask, self.val_mask, self.test_mask = (d[t].bool().to(device) for t in ("train_mask", 'val_mask', 'test_mask'))
         self.num_nodes, self.num_edges, self.num_classes = d["num_nodes"], d['num_edges'], d['num_classes']
 
@@ -103,7 +105,7 @@ class Parted_COO_Graph(BasicGraph):
 
         self.local_num_nodes = self.adj.size(0)
         self.local_num_edges = self.adj.values().size(0)
-        self.local_labels = self.labels[self.local_num_nodes*rank:self.local_num_nodes*(rank+1)].long()
+        self.local_labels = self.labels[self.local_num_nodes*rank:self.local_num_nodes*(rank+1)]
         self.local_train_mask = self.train_mask[self.local_num_nodes*rank:self.local_num_nodes*(rank+1)].bool()
 
         self.adj_parts = graph_utils.sparse_2d_split(self.adj, self.local_num_nodes, split_dim=1)
