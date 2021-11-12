@@ -9,8 +9,8 @@ from sklearn.metrics import f1_score
 
 
 def f1(y_true, y_pred, multilabel=True):
-    y_true = y_true.numpy()
-    y_pred = y_pred.numpy()
+    y_true = y_true.cpu().numpy()
+    y_pred = y_pred.cpu().numpy()
     if multilabel:
         y_pred[y_pred > 0] = 1
         y_pred[y_pred <= 0] = 0
