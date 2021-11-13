@@ -56,7 +56,7 @@ class COO_Graph(BasicGraph):
             cached_attr_dict = GraphCache.load_dict(self.cache_path)
         else:
             src_data = datasets.load_dataset(name)
-            cached_attr_dict = graph_utils.preprocess(src_data, preprocess_for)  # norm feat, remove edge_index, add adj
+            cached_attr_dict = graph_utils.preprocess(name, src_data, preprocess_for)  # norm feat, remove edge_index, add adj
             GraphCache.save_dict(cached_attr_dict, self.cache_path)
         super().__init__(cached_attr_dict, name, device)
 

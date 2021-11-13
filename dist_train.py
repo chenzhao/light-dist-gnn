@@ -24,9 +24,9 @@ def f1(y_true, y_pred, multilabel=True):
            f1_score(y_true, y_pred, average="macro")
 
 def train(g, env, total_epoch):
-    model = GCN(g, env, hidden_dim=128)
+    model = GCN(g, env, hidden_dim=256)
     # model = GAT(g, env)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     if g.labels.dim()==1:
         loss_func = nn.CrossEntropyLoss()
     elif g.labels.dim()==2:
@@ -44,7 +44,7 @@ def train(g, env, total_epoch):
             optimizer.step()
             env.logger.log("Epoch {:05d} | Loss {:.4f}".format(epoch, loss.item()), rank=0)
 
-        if epoch%1==0 or epoch==total_epoch-1:
+        if epoch%10==0 or epoch==total_epoch-1:
             all_outputs = env.all_gather_then_cat(outputs)
             if g.labels.dim()>1:
                 mask = g.train_mask

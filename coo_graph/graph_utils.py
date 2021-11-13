@@ -2,9 +2,9 @@ import torch
 import datetime
 
 
-def preprocess(attr_dict, preprocess_for):  # normalize feature and make adj matrix from edge index
+def preprocess(name, attr_dict, preprocess_for):  # normalize feature and make adj matrix from edge index
     begin = datetime.datetime.now()
-    print(preprocess_for, 'preprocess begin', begin)
+    print(name, preprocess_for, 'preprocess begin', begin)
     attr_dict["features"] = attr_dict["features"] / attr_dict["features"].sum(1, keepdim=True).clamp(min=1)
     if preprocess_for == 'GCN':  # make the coo format sym lap matrix
         attr_dict['adj'] = sym_normalization(attr_dict['edge_index'], attr_dict['num_nodes'])
@@ -22,6 +22,8 @@ def add_self_loops(edge_index, num_nodes):  # from pyg
 
 
 def sym_normalization(edge_index, num_nodes, faster_device='cuda:0'):
+    if num_nodes>1000000:  # adjust with GPU
+        faster_device = 'cpu'
     original_device = edge_index.device
     begin = datetime.datetime.now()
     edge_index = add_self_loops(edge_index, num_nodes)
