@@ -56,13 +56,28 @@ def prepare_pyg_dataset(pyg_name, tag):
                        'flickr': torch_geometric.datasets.Flickr,
                        'yelp': torch_geometric.datasets.Yelp,
                         'amazon-products': torch_geometric.datasets.AmazonProducts,
-                        'ogbn-products':  ogb.nodeproppred.PygNodePropPredDataset
                         }
-    pyg_dataset: torch_geometric.data.Dataset = dataset_sources[pyg_name](root=os.path.join(pyg_root, pyg_name), name=pyg_name)
+    pyg_dataset: torch_geometric.data.Dataset = dataset_sources[pyg_name](root=os.path.join(pyg_root, pyg_name))
     data: torch_geometric.data.Data = pyg_dataset[0]
     save_dataset(data.edge_index, data.x, data.y,
-                 data.val_mask, data.val_mask, data.test_mask,
+                 data.train_mask, data.val_mask, data.test_mask,
                  data.num_nodes, data.num_edges, pyg_dataset.num_classes, tag)
+
+
+def prepare_ogb_dataset(pyg_name, tag):
+    import torch_geometric
+    import ogb.nodeproppred
+    dataset_sources = { 'ogbn-products':  ogb.nodeproppred.PygNodePropPredDataset,
+                       'ogbn-arxiv': ogb.nodeproppred.PygNodePropPredDataset
+                       }
+    dataset = dataset_sources[pyg_name](root=os.path.join(pyg_root, pyg_name), name=pyg_name)
+    data: torch_geometric.data.Data = dataset[0]
+    split_idx = dataset.get_idx_split()
+    bool_mask = torch.zeros(data.num_nodes).bool()
+    make_mask = lambda name: bool_mask.index_fill(0, split_idx[name], True)
+    save_dataset(data.edge_index, data.x, data.y,
+                 make_mask('train'), make_mask('valid'), make_mask('test'),
+                 data.num_nodes, data.num_edges, dataset.num_classes, tag)
 
 
 def prepare_dataset(tag):
@@ -81,7 +96,9 @@ def prepare_dataset(tag):
     elif tag=='a_quarter_reddit':
         return prepare_pyg_dataset('reddit', tag)
     elif tag=='ogbn-products':
-        return prepare_pyg_dataset('ogbn-products', tag)
+        return prepare_ogb_dataset('ogbn-products', tag)
+    elif tag == 'ogbn-arxiv':
+        return prepare_ogb_dataset('ogbn-arxiv', tag)
     else:
         print('no such dataset', tag)
 
@@ -106,10 +123,11 @@ def check_edges(edge_index, num_nodes):
 
 
 def main():
-    prepare_dataset('ogbn-products')
-    return
     for dataset_name in ['cora', 'reddit', 'flickr', 'yelp', 'a_quarter_reddit','amazon-products']:
         prepare_dataset(dataset_name)
+    return
+    prepare_dataset('ogbn-arxiv', 'ogbn-products')
+    return
 
 
 if __name__ == '__main__':
