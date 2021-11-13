@@ -51,11 +51,14 @@ def prepare_dgl_dataset(dgl_name, tag):
 
 def prepare_pyg_dataset(pyg_name, tag):
     import torch_geometric
+    import ogb.nodeproppred
     dataset_sources = {'reddit': torch_geometric.datasets.Reddit,
                        'flickr': torch_geometric.datasets.Flickr,
                        'yelp': torch_geometric.datasets.Yelp,
-                        'amazon-products': torch_geometric.datasets.AmazonProducts}
-    pyg_dataset: torch_geometric.data.Dataset = dataset_sources[pyg_name](root=os.path.join(pyg_root, pyg_name))
+                        'amazon-products': torch_geometric.datasets.AmazonProducts,
+                        'ogbn-products':  ogb.nodeproppred.PygNodePropPredDataset
+                        }
+    pyg_dataset: torch_geometric.data.Dataset = dataset_sources[pyg_name](root=os.path.join(pyg_root, pyg_name), name=pyg_name)
     data: torch_geometric.data.Data = pyg_dataset[0]
     save_dataset(data.edge_index, data.x, data.y,
                  data.val_mask, data.val_mask, data.test_mask,
@@ -77,6 +80,10 @@ def prepare_dataset(tag):
         return prepare_dgl_dataset('reddit', tag)
     elif tag=='a_quarter_reddit':
         return prepare_pyg_dataset('reddit', tag)
+    elif tag=='ogbn-products':
+        return prepare_pyg_dataset('ogbn-products', tag)
+    else:
+        print('no such dataset', tag)
 
 
 def check_edges(edge_index, num_nodes):
@@ -99,6 +106,8 @@ def check_edges(edge_index, num_nodes):
 
 
 def main():
+    prepare_dataset('ogbn-products')
+    return
     for dataset_name in ['cora', 'reddit', 'flickr', 'yelp', 'a_quarter_reddit','amazon-products']:
         prepare_dataset(dataset_name)
 

@@ -60,11 +60,13 @@ class GCN(nn.Module):
         in_dim, out_dim = g.features.size(1), g.num_classes
         torch.manual_seed(0)
         self.weight1 = nn.Parameter(torch.rand(in_dim, hidden_dim).to(env.device))
-        self.weight2 = nn.Parameter(torch.rand(hidden_dim, out_dim).to(env.device))
+        # self.weight2 = nn.Parameter(torch.rand(hidden_dim, hidden_dim).to(env.device))
+        self.weight3 = nn.Parameter(torch.rand(hidden_dim, out_dim).to(env.device))
 
     def forward(self, features):
-        hidden_features1 = F.relu(DistGCNLayer.apply(features, self.weight1, self.g.adj_parts, 'L1'))
-        outputs = DistGCNLayer.apply(hidden_features1, self.weight2, self.g.adj_parts,  'L2')
+        hidden_features = F.relu(DistGCNLayer.apply(features, self.weight1, self.g.adj_parts, 'L1'))
+        # hidden_features = F.relu(DistGCNLayer.apply(hidden_features, self.weight2, self.g.adj_parts, 'L2'))
+        outputs = DistGCNLayer.apply(hidden_features, self.weight3, self.g.adj_parts,  'L3')
         return outputs
         # return F.log_softmax(outputs, 1)
 

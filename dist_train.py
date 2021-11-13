@@ -6,27 +6,31 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import f1_score
+from dist_utils import DistEnv
 
 
 def f1(y_true, y_pred, multilabel=True):
     y_true = y_true.cpu().numpy()
     y_pred = y_pred.cpu().numpy()
     if multilabel:
-        y_pred[y_pred > 0] = 1
-        y_pred[y_pred <= 0] = 0
+        y_pred[y_pred > 0.5] = 1.0
+        y_pred[y_pred <= 0.5] = 0.0
+        for node in [10,100,1000]:
+            DistEnv.env.logger.log('pred', y_pred[node] , rank=0)
+            DistEnv.env.logger.log('true', y_true[node] , rank=0)
     else:
         y_pred = np.argmax(y_pred, axis=1)
     return f1_score(y_true, y_pred, average="micro"), \
            f1_score(y_true, y_pred, average="macro")
 
 def train(g, env, total_epoch):
-    model = GCN(g, env)
+    model = GCN(g, env, hidden_dim=128)
     # model = GAT(g, env)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     if g.labels.dim()==1:
         loss_func = nn.CrossEntropyLoss()
     elif g.labels.dim()==2:
-        loss_func = nn.BCEWithLogitsLoss()
+        loss_func = nn.BCEWithLogitsLoss(reduction='mean')
     for epoch in range(total_epoch):
         with env.timer.timing('epoch'):
             outputs = model(g.features)
@@ -40,11 +44,11 @@ def train(g, env, total_epoch):
             optimizer.step()
             env.logger.log("Epoch {:05d} | Loss {:.4f}".format(epoch, loss.item()), rank=0)
 
-        if epoch%5==0 or epoch==total_epoch-1:
+        if epoch%1==0 or epoch==total_epoch-1:
             all_outputs = env.all_gather_then_cat(outputs)
             if g.labels.dim()>1:
                 mask = g.train_mask
-                env.logger.log(f'Epoch: {epoch:03d}', f1(g.labels[mask], all_outputs[mask]), rank=0)
+                env.logger.log(f'Epoch: {epoch:03d}', f1(g.labels[mask], torch.sigmoid(all_outputs[mask])), rank=0)
             else:
                 acc = lambda mask: all_outputs[mask].max(1)[1].eq(g.labels[mask]).sum().item()/mask.sum().item()
                 env.logger.log(f'Epoch: {epoch:03d}, Train: {acc(g.train_mask):.4f}, Val: {acc(g.val_mask):.4f}, Test: {acc(g.test_mask):.4f}', rank=0)
