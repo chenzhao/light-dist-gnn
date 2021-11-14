@@ -26,7 +26,7 @@ def f1(y_true, y_pred, multilabel=True):
 def train(g, env, total_epoch):
     model = GCN(g, env, hidden_dim=256)
     # model = GAT(g, env)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     if g.labels.dim()==1:
         loss_func = nn.CrossEntropyLoss()
     elif g.labels.dim()==2:
