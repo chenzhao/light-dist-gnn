@@ -3,6 +3,7 @@
 
 from .gat import GAT
 from .gcn import GCN
+from .cached_gcn import CachedGCN
 
 
 
