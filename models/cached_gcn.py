@@ -20,10 +20,11 @@ g_cache_enabled = {'ForwardL1': True, 'ForwardL2': True,
                   }
 
 g_bcast_counter = defaultdict(lambda: defaultdict(int))
+g_epoch_counter = defaultdict(int)
 
 def use_cache(tag, src):
-    F_L1 = tag == 'ForwardL1' and g_bcast_counter[tag][src]>1 # if there is enough gpu mem
-    F_L2 = tag == 'ForwardL2' and (g_bcast_counter[tag][src]>50 and g_bcast_counter[tag][src]%2==0)
+    F_L1 = tag == 'ForwardL1' and g_bcast_counter[tag][src]>0 # if there is enough gpu mem
+    F_L2 = tag == 'ForwardL2' and (g_bcast_counter[tag][src]>50 and g_epoch_counter[tag]%2==0)
     use = g_cache_enabled[tag] and (F_L1 or F_L2)
     if use:
         assert(src in g_cache[tag])
@@ -34,6 +35,7 @@ def cached_broadcast(local_adj_parts, local_feature, tag):
     env = DistEnv.env
     z_loc = torch.zeros_like(local_feature)
     feature_bcast = torch.zeros_like(local_feature)
+    g_epoch_counter[tag] += 1
     
     for src in range(env.world_size):
         if src==env.rank:
@@ -41,10 +43,13 @@ def cached_broadcast(local_adj_parts, local_feature, tag):
         # env.barrier_all()
         with env.timer.timing_cuda('broadcast'):
             if not use_cache(tag, src):
-                dist.broadcast(feature_bcast, src=src)
-                g_bcast_counter[tag][src] += 1
-                g_cache[tag][src] = feature_bcast
+                with env.timer.timing_cuda(f'broadcast {tag} {src}'):
+                    dist.broadcast(feature_bcast, src=src)
+                    g_bcast_counter[tag][src] += 1
+                    g_cache[tag][src] = feature_bcast.clone()
+                # env.logger.log('not cached', tag, src, 'counter', g_bcast_counter[tag][src])
             else:
+                # env.logger.log('cached', tag, src)
                 feature_bcast = g_cache[tag][src]
         with env.timer.timing_cuda('spmm'):
             spmm(local_adj_parts[src], feature_bcast, z_loc)
@@ -83,8 +88,8 @@ class CachedGCN(nn.Module):
         self.weight1 = nn.Parameter(torch.rand(in_dim, hidden_dim).to(env.device))
         self.weight2 = nn.Parameter(torch.rand(hidden_dim, hidden_dim).to(env.device))
         self.weight3 = nn.Parameter(torch.rand(hidden_dim, out_dim).to(env.device))
-        for weight in [self.weight1, self.weight2, self.weight3]:
-            nn.init.xavier_uniform_(weight)
+        # for weight in [self.weight1, self.weight2, self.weight3]:
+            # nn.init.xavier_uniform_(weight)
 
     def forward(self, features):
         hidden_features = F.relu(DistGCNLayer.apply(features, self.weight1, self.g.adj_parts, 'L1'))
