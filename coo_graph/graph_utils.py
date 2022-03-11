@@ -40,13 +40,13 @@ def sym_normalization(edge_index, num_nodes, faster_device='cuda:0'):
     return DAD.coalesce().to(original_device)
 
 
-def sparse_2d_split(st, split_size, split_dim=0, device='cpu'):
+def sparse_2d_split(st, split_size, split_dim=0):
     seps = list(range(0, st.size(split_dim), split_size)) + [st.size(split_dim)]
     parts = []
     split_idx = st.indices()[split_dim]
     other_idx = st.indices()[1 - split_dim]
     def make_2d_st(idx0, idx1, val, sz0, sz1):
-        return  torch.sparse_coo_tensor(torch.stack([idx0, idx1]), val, (sz0, sz1), device=device).coalesce()
+        return  torch.sparse_coo_tensor(torch.stack([idx0, idx1]), val, (sz0, sz1)).coalesce()
     for lower, upper in zip(seps[:-1], seps[1:]):
         mask: torch.Tensor = (split_idx < upper) & (split_idx >= lower)
         if split_dim == 0:

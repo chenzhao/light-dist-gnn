@@ -7,11 +7,10 @@ from . import datasets
 
 
 class BasicGraph:
-    def __init__(self, d, name, device, half_enabled):
-        dtype=torch.float16 if half_enabled else torch.float
+    def __init__(self, d, name, device):
         self.name, self.device, self.attr_dict = name, device, d
-        self.adj = d['adj'].to(dtype=dtype)
-        self.features = d['features'].to(device, dtype=dtype)
+        self.adj = d['adj']
+        self.features = d['features']
         self.labels = d['labels'].to(device).to(torch.float if d['labels'].dim()==2 else torch.long)
         self.train_mask, self.val_mask, self.test_mask = (d[t].bool().to(device) for t in ("train_mask", 'val_mask', 'test_mask'))
         self.num_nodes, self.num_edges, self.num_classes = d["num_nodes"], d['num_edges'], d['num_classes']
@@ -50,7 +49,7 @@ class GraphCache:
 
 
 class COO_Graph(BasicGraph):
-    def __init__(self, name, full_graph_cache_enabled=True, device='cpu', half_enabled=False, preprocess_for='GCN'):
+    def __init__(self, name, full_graph_cache_enabled=True, device='cpu', preprocess_for='GCN'):
         self.preprocess_for = preprocess_for
         self.cache_path = GraphCache.full_graph_path(name, preprocess_for)
         if full_graph_cache_enabled and os.path.exists(self.cache_path):
@@ -59,7 +58,7 @@ class COO_Graph(BasicGraph):
             src_data = datasets.load_dataset(name)
             cached_attr_dict = graph_utils.preprocess(name, src_data, preprocess_for)  # norm feat, remove edge_index, add adj
             GraphCache.save_dict(cached_attr_dict, self.cache_path)
-        super().__init__(cached_attr_dict, name, device, half_enabled)
+        super().__init__(cached_attr_dict, name, device)
 
     def partition(self, num_parts, padding=True):
         begin = datetime.datetime.now()
@@ -94,23 +93,39 @@ class COO_Graph(BasicGraph):
         print(self.name, num_parts, 'partition done', datetime.datetime.now()-begin)
 
 
+def coo_to_csr(coo, device, dtype):
+    print('coo', coo.size())
+    csr = coo.to_sparse_csr()
+    print('csr', csr.size())
+    small_csr = torch.sparse_csr_tensor(csr.crow_indices().to(dtype=torch.int32), 
+            csr.col_indices().to(dtype=torch.int32), csr.values().to(dtype=dtype), size=csr.size(), dtype=dtype, device=device)
+    print('small csr', small_csr.size())
+    return small_csr
+
 class Parted_COO_Graph(BasicGraph):
-    def __init__(self, name, rank, num_parts, device='cpu', half_enabled=False, preprocess_for='GCN'):
+    def __init__(self, name, rank, num_parts, device='cpu', half_enabled=False, csr_enabled=False, preprocess_for='GCN'):
         # self.full_g = COO_Graph(name, preprocess_for, True, 'cpu')
         self.rank, self.num_parts = rank, num_parts
         cache_path = GraphCache.parted_graph_path(name, preprocess_for, rank, num_parts)
         if not os.path.exists(cache_path):
             raise Exception('Not parted yet. Run COO_Graph.partition() first.', cache_path)
         cached_attr_dict = GraphCache.load_dict(cache_path)
-        super().__init__(cached_attr_dict, name, device, half_enabled)
+        super().__init__(cached_attr_dict, name, device)
 
-        # adj and features are local already
         self.local_num_nodes = self.adj.size(0)
         self.local_num_edges = self.adj.values().size(0)
         self.local_labels = self.labels[self.local_num_nodes*rank:self.local_num_nodes*(rank+1)]
         self.local_train_mask = self.train_mask[self.local_num_nodes*rank:self.local_num_nodes*(rank+1)].bool()
 
-        self.adj_parts = graph_utils.sparse_2d_split(self.adj, self.local_num_nodes, split_dim=1, device=device)
+        # adj and features are local already
+        dtype=torch.float16 if half_enabled else torch.float
+        self.features = self.features.to(device, dtype=dtype)
+
+        adj_parts = graph_utils.sparse_2d_split(self.adj, self.local_num_nodes, split_dim=1)
+        if csr_enabled:
+            self.adj_parts = [coo_to_csr(adj, device, dtype) for adj in adj_parts]
+        else:
+            self.adj_parts = [adj.to(device=device, dtype=dtype) for adj in adj_parts]
 
     def __repr__(self):
         local_g = f'<Local: {self.rank}, |V|: {self.local_num_nodes}, |E|: {self.local_num_edges}>'

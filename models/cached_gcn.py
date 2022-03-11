@@ -7,9 +7,13 @@ from dist_utils import DistEnv
 import torch.distributed as dist
 
 try:
-    from spmm_cpp import spmm_cusparse
+    from spmm_cpp import spmm_cusparse_coo, spmm_cusparse_csr
     def spmm(A,B,C): 
-        spmm_cusparse(A.indices()[0].int(), A.indices()[1].int(), A.values(), A.size(0), A.size(1), \
+        if DistEnv.env.csr_enabled:
+            spmm_cusparse_csr(A.crow_indices().int(), A.col_indices().int(), A.values(), A.size(0), A.size(1), \
+                B, C, 1.0, 1.0, DistEnv.env.half_enabled)
+        else:
+            spmm_cusparse_coo(A.indices()[0].int(), A.indices()[1].int(), A.values(), A.size(0), A.size(1), \
                 B, C, 1.0, 1.0, DistEnv.env.half_enabled)
 except ImportError as e:
     print('no spmm cpp:', e)
