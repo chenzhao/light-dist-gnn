@@ -131,6 +131,7 @@ dmypy.json
 *.iml
 *.txt
 *.coo_graph
+*.swp
 
 
 
