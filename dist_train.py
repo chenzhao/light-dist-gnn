@@ -4,6 +4,7 @@ from models import GCN, GAT, CachedGCN
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.cuda.amp import autocast
 import numpy as np
 from sklearn.metrics import f1_score
 from dist_utils import DistEnv
@@ -34,13 +35,14 @@ def train(g, env, total_epoch):
         loss_func = nn.BCEWithLogitsLoss(reduction='mean')
     for epoch in range(total_epoch):
         with env.timer.timing('epoch'):
-            outputs = model(g.features)
-            optimizer.zero_grad()
-            if g.local_labels[g.local_train_mask].size(0) > 0:
-                loss = loss_func(outputs[g.local_train_mask], g.local_labels[g.local_train_mask])
-            else:
-                env.logger.log('Warning: no training nodes in this partition! Backward fake loss.')
-                loss = (outputs * 0).sum()
+            with autocast(env.half_enabled):
+                outputs = model(g.features)
+                optimizer.zero_grad()
+                if g.local_labels[g.local_train_mask].size(0) > 0:
+                    loss = loss_func(outputs[g.local_train_mask], g.local_labels[g.local_train_mask])
+                else:
+                    env.logger.log('Warning: no training nodes in this partition! Backward fake loss.')
+                    loss = (outputs * 0).sum()
             loss.backward()
             optimizer.step()
             env.logger.log("Epoch {:05d} | Loss {:.4f}".format(epoch, loss.item()), rank=0)
@@ -58,7 +60,7 @@ def train(g, env, total_epoch):
 def main(env, args):
     env.logger.log('proc begin:', env)
     with env.timer.timing('total'):
-        g = Parted_COO_Graph(args.dataset, rank=env.rank, num_parts=env.world_size, device=env.device)
+        g = Parted_COO_Graph(args.dataset, env.rank, env.world_size, env.device, env.half_enabled)
         env.logger.log('graph loaded', g)
         train(g, env, total_epoch=args.epoch)
     env.logger.log(env.timer.summary_all(), rank=0)

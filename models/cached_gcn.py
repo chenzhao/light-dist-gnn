@@ -8,16 +8,20 @@ import torch.distributed as dist
 
 try:
     from spmm_cpp import spmm_cusparse
-    spmm = lambda A,B,C: spmm_cusparse(A.indices()[0].int(), A.indices()[1].int(), A.values(), A.size(0), A.size(1), B, C, 1, 1)
-except ImportError:
+    def spmm(A,B,C): 
+        spmm_cusparse(A.indices()[0].int(), A.indices()[1].int(), A.values(), A.size(0), A.size(1), \
+                B, C, 1.0, 1.0, DistEnv.env.half_enabled)
+except ImportError as e:
+    print('no spmm cpp:', e)
     spmm = lambda A,B,C: C.addmm_(A,B)
 
 
 from collections import defaultdict
 g_cache = defaultdict(dict)
 g_cache_enabled = {'ForwardL1': True, 'ForwardL2': True,
-                   'BackwardL1': False, 'BackwardL2': False
-                  }
+                   'BackwardL1': False, 'BackwardL2': False }
+g_cache_enabled = {'ForwardL1': False, 'ForwardL2': False,
+                   'BackwardL1': False, 'BackwardL2': False }
 
 g_bcast_counter = defaultdict(lambda: defaultdict(int))
 g_epoch_counter = defaultdict(int)
@@ -35,6 +39,7 @@ def cached_broadcast(local_adj_parts, local_feature, tag):
     env = DistEnv.env
     z_loc = torch.zeros_like(local_feature)
     feature_bcast = torch.zeros_like(local_feature)
+    # print('bcast feature', feature_bcast)
     g_epoch_counter[tag] += 1
     
     for src in range(env.world_size):
@@ -46,7 +51,8 @@ def cached_broadcast(local_adj_parts, local_feature, tag):
                 with env.timer.timing_cuda(f'broadcast {tag} {src}'):
                     dist.broadcast(feature_bcast, src=src)
                     g_bcast_counter[tag][src] += 1
-                    g_cache[tag][src] = feature_bcast.clone()
+                    if g_cache_enabled[tag]:
+                        g_cache[tag][src] = feature_bcast.clone()
                 # env.logger.log('not cached', tag, src, 'counter', g_bcast_counter[tag][src])
             else:
                 # env.logger.log('cached', tag, src)
@@ -72,7 +78,7 @@ class DistGCNLayer(torch.autograd.Function):
         features,  weight = ctx.saved_tensors
         ag = cached_broadcast(ctx.adj_parts, grad_output, 'Backward'+ctx.tag)
         with DistEnv.env.timer.timing_cuda('mm'):
-            grad_features = torch.mm(ag, weight.t())
+            grad_features = torch.mm(ag.to(dtype=torch.float), weight.t())
             grad_weight = torch.mm(features.t(), ag)
         with DistEnv.env.timer.timing_cuda('all_reduce'):
             DistEnv.env.all_reduce_sum(grad_weight)
