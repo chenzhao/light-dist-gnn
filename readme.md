@@ -64,3 +64,8 @@ python main.py
 4. Check cache methods in models.
 5. Run and see the result. 
 
+
+#### Contact
+
+Contact chenzhao@ust.hk for any problems.
+
